@@ -5,7 +5,7 @@
 ## Table of Contents
 
 - **Preparation Guide for Kubernetes**
-  - <a href="https://github.com/oktaytuncay/Knowledge_Base/blob/master/aws_big_data_specialty/aws_big_data_specialty_en.md" target="_blank">**`English`**</a>
+  - <a href="https://github.com/oktaytuncay/Kubernetes/blob/master/kubernetes_md/kubernetes_en.md" target="_blank">**`English`**</a>
 
 ---
 
