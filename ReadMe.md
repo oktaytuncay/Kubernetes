@@ -1,3 +1,5 @@
+![pic0](images/0.png)
+
 #### Basic Concepts
 **Node:** Node is a machine, physical or virtual one which Kubernetes installed. And node is a worker machine and that is where containers will be launchaned by Kubernetes. It was also known as minion's in the past.
 
