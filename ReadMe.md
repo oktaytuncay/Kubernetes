@@ -61,3 +61,4 @@ But sometimes we might have a scenario where we have a helper container that mig
 In that case, you can have both of these containers, part of the same pod, so that when a new application conatiner is created, the helper is also created and when it dies, the helper also dies. Since they are part of the same pod.
 
 The two containers can also communicate with each other directly by referring to each other as localhost, since they share the same network space. Plus they can easily share the same storage space as well.
+
