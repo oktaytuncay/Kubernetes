@@ -89,4 +89,77 @@ This is good in the long run as your application is now equipped for architectur
 
 <a href="https://kubernetes.io/docs/tasks/tools/install-kubectl-windows/" target="_blank">**`Installation Guide for Windows`**</a>
 
+###### How to Deploy Pods?
 
+```bash
+$ kubectl run nginx --image nginx
+pod/nginx created
+```
+
+`kubectl run nginx` command creates a pod automatically and deploys an instance of the nginx docker image, but where does it get application image from?
+
+The application image and in this case the nginx image is downloaded from the repository docker hub. 
+Docker hub is a public repository where the latest images of various applications are stored.
+
+We could configure Kubernetes to pull the image from the public or a private repository within the organization.
+
+Now that we have a pod created, how do we see the list of pods available. `kubectl get pods` command helps us see the list of pods in our cluster.
+
+```bash
+$ kubectl get pods
+NAME    READY   STATUS    RESTARTS   AGE
+nginx   1/1     Running   0          8m57s
+```
+We have create nginx but how a user can access the nginx Web server? So, in the current state, we have not made the Web server accessible to external users. We can access it internally from the node but for now, we can not access the Web server from outside the node.
+
+##### YAML in Kubernetes
+
+Kubernetes uses YAML files as inputs for the creation of objects such as pods, replicasets, deployments, services, etc. All of these follow a similar structure. Kubernetes definition file always contains for top level fields.
+The API version, kind, metadata and spec. These are the top level or root level properties. 
+These are also required fields, so you must have them in your configuration file.
+
+```properties
+apiVersion: v1
+kind: Pod
+metadata:
+    name: myapp-pod
+    labels:
+        app: myapp
+        type: front-end
+
+spec:
+```
+**apiVersion:** Version of the Kubernetes API we are using to create the object. Depending on what we are trying to create, we must use the right API version. Since we're working on pods, we will set the API version as `v1`. Few other possible values for this field are apps/v1-beta extension/v1-beta etc.
+
+**kind:** kind  refers to type of object we are trying to create which in this case happens to be a pod. So, we will set it as `Pod`. Could be replica set, deployment or service.
+
+**metadata:** The metadata is data about the object like its name, labels, etc. Unlike the first two where we have specified a string value this is in the form of a dictionary. So, everything under metadata is intended to the right a little bit and so name and labels are children of metadata. Children's (name and labels) locations should be the same as their sibling's.
+
+Under metadata the name is a string value so we can name our pod. `myapp-pod` and the labels is a dictionary, so labels is a dictionary within the metadata dictionary. 
+And it can have any key and value pairs as we wish. 
+
+For now, we have added a label app with the value `myapp`. 
+
+Similarly, we could add other labels as we see fit which will us identify these objects at a later point in time.
+
+For example. there are hundreds of pods running a front end application and hundreds of pods running a backend application or a database. It will be difficult to group these pods once they're deployed.
+
+If we label them now as `front-end` backend or database, we will be able to filter the parts based on this label at a later point in time.
+
+It's important to keep in mind that under metadata we can only specify name or labels or anything else that Kubernetes expects to be under metadata.
+
+We can not ad any other property as we wish under metadata. However under the labels we can have any kind of key or value pairs we see fit. 
+
+So it's important to understand what each of these parameters expect.
+
+The table below summarizes the Type of Fields.
+
+|field     |type      | 
+|----------|----------|
+|apiVersion|string    |
+|kind      |string    |
+|metadata  |dictionary|
+|name      |string    |
+|labels    |dictionary|
+|app       |string    |
+|type      |string    |
