@@ -27,7 +27,7 @@ All the information gathered are stored in a key value store on the master. The 
 
 - View information about the cluster
     ```
-    kubectl cluster info
+    kubectl cluster-info
     ```
 
 - List all nodes part of the cluster**
@@ -59,3 +59,34 @@ But sometimes we might have a scenario where we have a helper container that mig
 In that case, you can have both of these containers, part of the same pod, so that when a new application conatiner is created, the helper is also created and when it dies, the helper also dies. Since they are part of the same pod.
 
 The two containers can also communicate with each other directly by referring to each other as localhost, since they share the same network space. Plus they can easily share the same storage space as well.
+
+##### Docker vs Kubernetes
+
+![pic4](images/4.png)
+
+A fundamental difference between Kubernetes and Docker is that Docker is a containerization platform, and Kubernetes is a container orchestrator for container platforms like Docker.
+
+In Docker, we would need to establish network connectivity between containers ourselves using links and networks. 
+
+We would need to create sharable volumes and shared among the containers and need to maintain a map of that as well. 
+
+And most importantly, we will need to monitor the state of the application container, and when it dies, we will manually kill the helper container as it is no longer needed.
+
+When a new container is deployed, we would need to deploy the new helper container as well with pod.
+
+Kubernetes does all of this for us automatically. We just need to define what containers a pod consists of and the containers in a pod by default will have access to the same storage, the same network, namespace and same fate as in they will be created together and destroyed together.
+
+Even if our application didn't happen to be so complex and we could live with a single container, Kubernetes still requires you to create pods.
+
+This is good in the long run as your application is now equipped for architectural changes and scale in the future.
+
+**After this step, Kubernetes must be installed in order to test the commands. You can use the links below for installation.***
+
+
+<a href="https://kubernetes.io/docs/tasks/tools/install-kubectl-linux/" target="_blank">**`Installation Guide for Linux`**</a>
+
+<a href="https://kubernetes.io/docs/tasks/tools/install-kubectl-macos/" target="_blank">**`Installation Guide for MacOS`**</a>
+
+<a href="https://kubernetes.io/docs/tasks/tools/install-kubectl-windows/" target="_blank">**`Installation Guide for Windows`**</a>
+
+
