@@ -128,6 +128,9 @@ metadata:
         type: front-end
 
 spec:
+    containers:
+        - name: nginx-container
+          image: nginx
 ```
 **apiVersion:** Version of the Kubernetes API we are using to create the object. Depending on what we are trying to create, we must use the right API version. Since we're working on pods, we will set the API version as `v1`. Few other possible values for this field are apps/v1-beta extension/v1-beta etc.
 
@@ -152,6 +155,10 @@ We can not ad any other property as we wish under metadata. However under the la
 
 So it's important to understand what each of these parameters expect.
 
+**spec:** Spec is dictionary has a property under it called `containers`. Containers is a list an array. The reason this property is a list is because the pods can have multiple containers witin them. In this case, we will only add a single item in the list since we plan to have only a single container in the pod. 
+The `-` right before the name indicates that this is the first item in the list. The item in the list is a dictionary so add name and image property the value for image is nginx which is the name of the Docker image in the docker repository.
+Once the file is created from the command `kubectl create -f pod-definition.yml` followed by the file name which is pod-definition.yml and Kubernetes creates a pod.
+
 The table below summarizes the Type of Fields.
 
 |field     |type      | 
@@ -163,3 +170,58 @@ The table below summarizes the Type of Fields.
 |labels    |dictionary|
 |app       |string    |
 |type      |string    |
+|spec      |dictionary|
+|containers|list      |
+
+To create a pod with the above yml file;
+
+```bash
+$ kubectl create -f pod-definition.yml
+pod/myapp-pod created
+```
+kubectl decribe command will tell us information about the pod; when it was created, what labels are assinged to it, what docker containers are a part of it, and the events associated with that pod.
+
+```bash
+$ kubectl describe pod nginx
+Name:         nginx
+Namespace:    default
+Priority:     0
+Node:         10.0.10.25/10.0.10.25
+Start Time:   Fri, 22 Oct 2021 08:20:40 +0000
+Labels:       run=nginx
+Annotations:  <none>
+Status:       Running
+IP:           10.244.1.2
+IPs:
+  IP:  10.244.1.2
+Containers:
+  nginx:
+    Container ID:   cri-o://bf5109681523311b60c40189b5efeee01114ff238f59861770b16def10f3aa7f
+    Image:          nginx
+    Image ID:       docker.io/library/nginx@sha256:644a70516a26004c97d0d85c7fe1d0c3a67ea8ab7ddf4aff193d9f301670cf36
+    Port:           <none>
+    Host Port:      <none>
+    State:          Running
+      Started:      Fri, 22 Oct 2021 08:20:48 +0000
+    Ready:          True
+    Restart Count:  0
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from default-token-kd5vg (ro)
+Conditions:
+  Type              Status
+  Initialized       True 
+  Ready             True 
+  ContainersReady   True 
+  PodScheduled      True 
+Volumes:
+  default-token-kd5vg:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  default-token-kd5vg
+    Optional:    false
+QoS Class:       BestEffort
+Node-Selectors:  <none>
+Tolerations:     node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                 node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+Events:          <none>
+```
