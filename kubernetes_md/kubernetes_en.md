@@ -225,3 +225,39 @@ Tolerations:     node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
                  node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
 Events:          <none>
 ```
+
+**Example:**
+
+We can add anything on the labels that will help you group this section in the future.
+
+```properties
+apiVersion: v1
+kind: Pod
+metadata:
+  name: myapp-pod
+  labels:
+    app: myapp
+    type: front-end
+    costcenter: EMEA
+    location: Amsterdam
+
+spec:
+    containers:
+        - name: nginx-container
+          image: nginx
+```
+
+Before creating a pod with the above script, if it already exists, it can be listed and deleted with the following commands.
+
+```bash
+% kubectl get pods                  
+NAME        READY   STATUS    RESTARTS   AGE
+nginx       1/1     Running   0          2d19h
+
+% kubectl delete pod nginx
+pod "nginx" deleted
+
+% kubectl create -f pod-definition.yml
+pod/myapp-pod created
+```
+
