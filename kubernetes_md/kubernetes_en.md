@@ -512,3 +512,356 @@ There are multiple ways to do it.
 
 - Scale replicaset simply from the command line without having to modify the file
   > kubectl scale -replicas=6 -f replicaset-definition.yml
+
+- Edit replicaset
+  > kubectl edit replicaset
+
+#### Deployments
+
+![pic8](images/8.png)
+
+You have a Web server and that needs to be deployed in a production environment. You need many instances of running web server. And also whenever a newer version of application builds become available on the Docker registry and if you upgrade them all at once, this may impact users accessing the application. So, you might want to upgrade them one after the other.
+
+Let's say your upgrade resulted in an error and you want to roll back the changes that were recently carried out.
+
+Another scenario that can be illustrated is,you would like to make multiple changes to your environment such as upgrading the underlying web server versions, scaling the environment, modifying the resource allocations etc...
+
+And you would like to apply a pause to your environment, make the changes and then resumes. So, all the changes are rolled out together.
+
+All of these capabilities are available with the Kuberetes deployments.
+
+Each container is encapsulated in PODs. Multiple set PODs are deployed using replication controllers or replicaset.
+And then comes deployment which is a Kubernetes object that comes higher in the hierarchy.
+
+The deploymeny provides us with the capability to upgrade the underlying instances seamlessly using rolling updates, undo changes, pause and resume changes as required.
+
+Replicaset and deployment definition files are similar. Except for the kind which is going to be deployment.
+
+```properties
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp-deployment
+  labels: 
+    app: myapp
+    type: front-end
+spec:
+  template:
+    metadata:
+      name: myapp-pod
+      labels:
+        app: myapp
+        type: front-end    
+    spec:
+      containers:
+      - name: nginx-container
+        image: nginx
+  replicas: 3
+  selector:
+    matchLabels:
+      type: front-end
+```
+
+```bash
+% kubectl create -f deployment-definition.yml
+deployment.apps/myapp-deployment created
+
+% kubectl get replicaset                     
+NAME                          DESIRED   CURRENT   READY   AGE
+myapp-deployment-7df67f74c5   3         3         3       6s
+
+% kubectl get pods      
+NAME                                READY   STATUS    RESTARTS   AGE
+myapp-deployment-7df67f74c5-lnnzq   1/1     Running   0          13s
+myapp-deployment-7df67f74c5-ndb8n   1/1     Running   0          12s
+myapp-deployment-7df67f74c5-zdfgq   1/1     Running   0          12s
+```
+
+Deployment automatically creates a Replica Set and PODs. If we run the commands, we will be able to see the PODs with the name of deploymant and replicaset.
+
+So far there has not been much of a difference between replicaset and deployments. Except for the fact that deployment created a new Kubernetes object called deployments.
+
+- To see all created objects at once
+  > kubectl get all
+
+  ```bash
+  % kubectl get all
+  NAME                                    READY   STATUS    RESTARTS   AGE
+  pod/myapp-deployment-7df67f74c5-lnnzq   1/1     Running   0          4m52s
+  pod/myapp-deployment-7df67f74c5-ndb8n   1/1     Running   0          4m51s
+  pod/myapp-deployment-7df67f74c5-zdfgq   1/1     Running   0          4m51s
+
+  NAME                 TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)   AGE
+  service/kubernetes   ClusterIP   10.96.0.1    <none>        443/TCP   5d1h
+
+  NAME                               READY   UP-TO-DATE   AVAILABLE   AGE
+  deployment.apps/myapp-deployment   3/3     3            3           4m52s
+
+  NAME                                          DESIRED   CURRENT   READY   AGE
+  replicaset.apps/myapp-deployment-7df67f74c5   3         3         3       4m52s
+  ```
+
+##### Output Commands
+
+The default output format for all kubectl commands is the human-readable plain-text format. The -o flag allows us to output the details in several different formats.
+
+> kubectl [command] [TYPE] [NAME] -o <output_format>
+
+Here are some of the commonly used formats:
+
+1. `-o json` output a JSON formatted API object.
+
+2. `-o name` print only the resource name and nothing else.
+
+3. `-o wide` output in the plain-text format with any additional information.
+
+4. `-o yaml` output a YAML formatted API object.
+
+For more details;
+
+https://kubernetes.io/docs/reference/kubectl/overview/
+
+https://kubernetes.io/docs/reference/kubectl/cheatsheet/
+
+#### Namespaces
+
+![pic9](images/9.png)
+
+Let's assume there are two boys named Michael to differentiate them from each other, we call them by their last names Jordan and Jackson.
+They come from different houses and there are other members in the house. Individuals in the household only address each other by their first names.
+
+For example, the father addresses is Michael. However, if the father wishes to address Michael in the other house, he uses his full name. (Michael Jackson)
+
+Someone outside of these houses would also use the full name to refer to anyone these houses.
+
+Each of these houses have their own set of rules that defines who does what. Each of these houses have their own set of resources that can consume.
+
+These houses correspond to Namespaces in Kubernetes.
+
+We have created objects such as PODs, Deployments and services in our cluster. Whatever we have been doing, we have been doing within a Namespace.
+
+We were inside a house all this while, this namespace is known as the default Namespace and it's created automatically by Kubernetes when the cluster is first setup.
+
+Kubernetes creates a set of PODs and services for it's internal purpose such as those required by the networking solution, the DNS service etc.
+
+To isolate these from the user and to prevent accidentally deleting or modifying the services, Kubernetes creates them under another Namespace created at cluster startup named `kube-system`.
+
+A third namespace created by Kubernetes automatically is called `kube-pulic`. This is where resources that should be made available to all users are created.
+
+![pic10](images/10.png)
+
+If you want to use the same cluster both Dev and Production environment but at the same time isolate the resources between them, you can create a different namespace for each of them.
+
+That way while working in the Dev environment you don't accidentally modify resources in production.
+
+Each of these Namespaces can have it's own set of policies that define who can do what.
+
+We can also assign POD of resources to each of these Namespaces, that way each Namespace is guaranteed a certain amount and does not use more its allowed limit.
+
+The default Namespace that we've been working on, just like how the members within the house refer to each other by their first names. The resources within a namespace can refer to each other simply by their names.
+
+**Example:**
+  - **Namespace:** Default
+  - **Objects:**
+    - web-pod
+    - db-service
+    - web-deployment
+
+In this case, the webapp-pod can reach db-service simlpy using the hostname db-service.
+
+> mysql.connect("db-service")
+
+If required, the webapp-pod can reach a service in another Namespace as well. For this you must append the name of the namespace to the name of the service.
+
+For example for the web-pod in the default namespace to connect to the database in the Dev environment, in this case format should be `service.namespace.svc.cluster.local` 
+
+> mysql.connect("db-service.dev.svc.cluster.local")
+
+We're able to do this because when the service is created a DNS entry is added automatically in this format.
+
+Looking closely at the DNS name of the service, the last part `cluster.local` is the default domain name of the Kubernetes cluster `.svc` is the subdomain for service followed by the namespace and then the name of the service itself.
+
+![pic11](images/11.png)
+
+To list PODs in another namespace, we need to use the namespace option in the command along with the name of the namespace.
+
+```bash
+% kubectl get pods --namespace=kube-system
+NAME                                   READY   STATUS    RESTARTS   AGE
+coredns-7db99fc7fb-7fj9c               1/1     Running   0          6d11h
+coredns-7db99fc7fb-lpjnv               1/1     Running   0          6d11h
+coredns-7db99fc7fb-zt4ww               1/1     Running   0          6d11h
+csi-oci-node-cxh6l                     1/1     Running   1          6d11h
+csi-oci-node-h5jk9                     1/1     Running   0          6d11h
+csi-oci-node-hmskj                     1/1     Running   0          6d11h
+kube-dns-autoscaler-696f8695ff-rwbdd   1/1     Running   0          6d11h
+kube-flannel-ds-gr4f6                  1/1     Running   0          6d11h
+kube-flannel-ds-klfxr                  1/1     Running   0          6d11h
+kube-flannel-ds-r6dsz                  1/1     Running   0          6d11h
+kube-proxy-6lq74                       1/1     Running   0          6d11h
+kube-proxy-lp25n                       1/1     Running   0          6d11h
+kube-proxy-qm7k2                       1/1     Running   0          6d11h
+proxymux-client-lhcjc                  1/1     Running   0          6d11h
+proxymux-client-lzfzm                  1/1     Running   0          6d11h
+proxymux-client-p5cfh                  1/1     Running   0          6d11h
+```
+
+To create a pod in anothe namespace, we need to use the namespace option.
+
+> kubectl create -f pod-definition.yml --namespace=dev
+
+If we want to make sure that this pod gets created in the dev environment all the time even if we don't specify the namespace in the command line, we can put the namespace definition into the pod definition file under the metadata section.
+
+```properties
+metadata:
+  name: myapp-pod
+  namespace: dev
+  ...
+```
+
+So, how do we create a new namespace? Like any other object, use a namespace definition file. The API version is v1, kind is namespace and under metadata specify the name.
+
+```properties
+apiVersion: v1
+kind: namespace
+metadata:
+  name: dev
+```
+
+```bash
+% kubectl create -f namespace-dev.yml
+namespace/dev created
+```
+
+Another way to create a namespace is by simply running the command kubectl create namespace followed by the name of the namespace.
+
+```bash
+% kubectl create namespace prod
+namespace/prod created
+```
+
+But what if we want to switch to the dev namespace permanently so that we don't have to specify the namespace option anymore.
+
+In that case use the kubectl config command to set the namespace in the current context to dev.
+
+> kubectl config set-context $(kubectl config current-context) --namespace=dev
+
+```bash
+% kubectl create -f pod-definition.yml --namespace=dev
+pod/myapp-pod created
+
+% kubectl config set-context $(kubectl config current-context) --namespace=dev
+Context "context-cklkyy5l4pa" modified.
+
+% kubectl get pod
+NAME        READY   STATUS    RESTARTS   AGE
+myapp-pod   1/1     Running   0          54s
+```
+
+Similary. we can switch to the prod namespace the same way.
+
+To view pods in all namespace, we can use the all namespaces option in the command.
+
+
+```bash
+% kubectl get pods --all-namespaces
+
+NAMESPACE     NAME                                   READY   STATUS    RESTARTS   AGE
+default       myapp-deployment-7df67f74c5-lnnzq      1/1     Running   0          34h
+default       myapp-deployment-7df67f74c5-ndb8n      1/1     Running   0          34h
+default       myapp-deployment-7df67f74c5-zdfgq      1/1     Running   0          34h
+dev           myapp-pod                              1/1     Running   0          3m24s
+kube-system   coredns-7db99fc7fb-7fj9c               1/1     Running   0          6d11h
+kube-system   coredns-7db99fc7fb-lpjnv               1/1     Running   0          6d11h
+kube-system   coredns-7db99fc7fb-zt4ww               1/1     Running   0          6d11h
+kube-system   csi-oci-node-cxh6l                     1/1     Running   1          6d11h
+kube-system   csi-oci-node-h5jk9                     1/1     Running   0          6d11h
+kube-system   csi-oci-node-hmskj                     1/1     Running   0          6d11h
+kube-system   kube-dns-autoscaler-696f8695ff-rwbdd   1/1     Running   0          6d11h
+kube-system   kube-flannel-ds-gr4f6                  1/1     Running   0          6d11h
+kube-system   kube-flannel-ds-klfxr                  1/1     Running   0          6d11h
+kube-system   kube-flannel-ds-r6dsz                  1/1     Running   0          6d11h
+kube-system   kube-proxy-6lq74                       1/1     Running   0          6d11h
+kube-system   kube-proxy-lp25n                       1/1     Running   0          6d11h
+kube-system   kube-proxy-qm7k2                       1/1     Running   0          6d11h
+kube-system   proxymux-client-lhcjc                  1/1     Running   0          6d11h
+kube-system   proxymux-client-lzfzm                  1/1     Running   0          6d11h
+kube-system   proxymux-client-p5cfh                  1/1     Running   0          6d11h
+```
+
+Taking a closer look at the command `kubectl config set-context $(kubectl config current-context) --namespace=dev`, this command first identifies the current context and then sets the namespace to the desired one for that current context. Context are used to manage multiple clusters in multiple environments from the same management system.
+
+##### Resource Quota
+
+To limit resources in a namespace, we can create a resource quota. We first need to specify the namespace for which we want to create a quota and the under spec, we can provide our limits then creat the quota.
+
+```properties
+apiVersion: v1
+kind: ResourceQuota
+metadata
+  name: compute-quota
+  namespace: dev
+spec:
+  hard:
+    pods: "10"
+    request.cpu: "4"
+    request.memory: 5Gi
+    limits.pu: "10"
+    limits.memory: 10Gi
+```
+
+> kubectl create -f compute-quota.yaml
+
+#### Imperative commands
+
+Although we mostly work declaratively using definition files, we can quickly handle one-time tasks using imperative commands and at the same time easily create a definition template.
+
+By default as soon as the command is run, the resource will be created. If you simply want to test your command use the below option. This will not create the resource, instead, tell you whether the resource can be created and if your command is right.
+  - `--dry-run=client`
+
+##### Pod
+
+1. Create an NGINX Pod
+  - `kubectl run nginx --iname=nginx`
+
+2. Generate Pod manifest yaml file with `-o yaml option`. This command will not create it with the `--dry-run` option. 
+
+  - `kubectl run nginx --image=nginx --dry-run=client -o yaml`
+
+##### Deployment
+
+1. Generate deployment with 4 replicas
+
+  - `kubectl create deployment nginx --iname=nginx --replicas=4`
+
+2. Scale a deployment 
+
+  - `kubectl scale deployment nginx --replicas=5`
+
+3. Alternatife way to generate deployment is to save the yaml definition to a file and modify.
+
+  - `kubectl create deployment nginx --image=nginx --dry-run=client -o yaml > nginx-deployment.yaml`
+
+  We can save then update the yaml file with the other fields before creating the deployment.
+
+##### Service
+
+1. Create a service named redis-service of type ClusterIP to expose pod redis on port 6379. The following command will automatically use the pod's labels as selectors.
+
+  - `kubectl expose pod redis --port=6379 --name redis-service --dry-run=client -o yaml`
+
+2. Alternatife way of 1. The following command will not use the pods labels as selectors, instead it will assume selectors as **app=redis**
+
+  - `kubectl create service clusterip redis --tcp=6379:6379 --dry-run=client -o yaml`
+
+3. Create a service named ngix of type NodePort to expose pod nginx's port 80 on port 30080 on the nodes. The following command will automatically use the pod's labels as selectors but we can not specify the node port. We have to generate a definition file and then add the node port in manually before creating the service with the pod.
+
+  - `kubectl expose pod nginx --port=80 --name nginx-service --type=NodePort --dry-run=client -o yaml`
+
+4. Alternatife way of 3. The following command will not use the pods labels as selectors
+
+  - `kubectl create service nodeport nginx --tcp=80:80 --node-port=30080 --dry-run=client -o yaml`
+
+    Both the above commands have their own challenges. While one of it cannot accept a selector the other cannot accept a node port.
+
+    If you need to specify a node port, create a definition file using the same command and enter the node port manually before creating the service.
