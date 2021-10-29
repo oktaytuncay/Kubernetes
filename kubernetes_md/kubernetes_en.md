@@ -867,3 +867,13 @@ By default as soon as the command is run, the resource will be created. If you s
     If you need to specify a node port, create a definition file using the same command and enter the node port manually before creating the service.
 
  [Reference Link](https://kubernetes.io/docs/reference/kubectl/conventions/)
+
+**Examples:** 
+
+1. Create a new pod called custom-nginx using the nginx image and expose it on container port 8080.
+
+    > kubectl run custom-nginx --image=nginx --port=8080
+
+2. Create a pod called httpd using the image httpd:alpine in the default namespace. Next, create a service of type ClusterIP by the same name (httpd). The target port for the service should be 80.
+
+    > kubectl run httpd --image=httpd:alpine --port=80 --expose
