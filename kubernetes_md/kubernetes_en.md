@@ -617,11 +617,11 @@ Here are some of the commonly used formats:
 
 4. `-o yaml` output a YAML formatted API object.
 
-For more details;
+**You can check the following links for more details.**
 
-https://kubernetes.io/docs/reference/kubectl/overview/
+- [Overview](https://kubernetes.io/docs/reference/kubectl/overview/)
 
-https://kubernetes.io/docs/reference/kubectl/cheatsheet/
+- [Cheatsheet](https://kubernetes.io/docs/reference/kubectl/cheatsheet/)
 
 #### Namespaces
 
@@ -865,3 +865,5 @@ By default as soon as the command is run, the resource will be created. If you s
     Both the above commands have their own challenges. While one of it cannot accept a selector the other cannot accept a node port.
 
     If you need to specify a node port, create a definition file using the same command and enter the node port manually before creating the service.
+
+ [Reference Link](https://kubernetes.io/docs/reference/kubectl/conventions/)
