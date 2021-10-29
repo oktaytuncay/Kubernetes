@@ -621,7 +621,7 @@ Here are some of the commonly used formats:
 
 - [Overview](https://kubernetes.io/docs/reference/kubectl/overview/)
 
-- [Cheatsheet](https://kubernetes.io/docs/reference/kubectl/cheatsheet/)
+- [Cheat Sheet](https://kubernetes.io/docs/reference/kubectl/cheatsheet/)
 
 #### Namespaces
 
