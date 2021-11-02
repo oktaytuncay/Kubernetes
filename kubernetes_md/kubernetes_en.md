@@ -1,4 +1,4 @@
-## Basic Concepts
+## Core Concepts
 
 **Node:** Node is a machine, physical or virtual one which Kubernetes installed. And node is a worker machine and that is where containers will be launchaned by Kubernetes. It was also known as minion's in the past.
 
@@ -877,3 +877,272 @@ By default as soon as the command is run, the resource will be created. If you s
 2. Create a pod called httpd using the image httpd:alpine in the default namespace. Next, create a service of type ClusterIP by the same name (httpd). The target port for the service should be 80.
 
     > kubectl run httpd --image=httpd:alpine --port=80 --expose
+
+## Configuration
+
+#### Commands & Arguments
+
+To create a simple docker image that sleeps for a given number of seconds, we can named it ubuntu-sleeper and use the following command.
+
+> docker run --name ubuntu-sleeper ubuntu-sleeper
+
+By default, it sleeps for five seconds, but we can override by passing a command line argument.
+
+> docker run --name ubuntu-sleeper ubuntu-sleeper 10
+
+We will now create a pod using this image with additional argument in the pod definition file.
+
+Anything that is appended to the docker run command will go into the `args` property off the pod definition file in the form of an array line below.
+
+```properties
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ubuntu-sleeper-pod
+spec:
+  containers:
+    - name: ubuntu-sleeper
+      image: ubuntu-sleeper
+      args: ["10"]
+```
+
+The docker file has an entry point as well as CMD instructions specified. The entry point is the command that is run at statup and the CMD is the default parameter passed to the command. With the args option in the pod definition file, we override the code CMD instruction in the docker file.
+
+But what if we need to override the entry point? For instance, from sleep to an imaginary sleep 2.0 command.
+
+In the docker world, we can run with entrypoint option set to the new command as follows.
+
+> docker run --name ubuntu-sleeper --entrypoint sleep2.0 ubuntu-sleeper 10
+
+The corresponding entry in the pod definition file would be using a command field. The command field corresponds to entry point instruction in the docker file.
+
+```properties
+apiVersion: v1
+kind: Pod
+metadata:
+  name: ubuntu-sleeper-pod
+spec:
+  containers:
+    - name: ubuntu-sleeper
+      image: ubuntu-sleeper
+      command: ["sleep2.0"]
+      args: ["10"]
+```
+
+To summarize, there are two fields that correspond to instructions in the docker file, 
+- The command field overrides the entry point instruction 
+- The args field overrides the command instruction in the docker file.
+
+##### Editing PODs and Deployments
+
+###### Edit PODs
+
+We can not edit specifications of an existing POD other than the below.
+
+- spec.containers[*].image
+- spec.initContainers[*].image
+- spec.activeDeadlineSeconds
+- spec.tolerations
+
+For example, we cannot edit the environment variables, service accounts, resource limits of a running pod. But if we really want to, we have 2 options.
+
+1. Run the `kubectl edit pod <pod name>` command.
+
+  This command will open the pod specification in an editor (vi editor). Then edit the required properties. When we try to save it, you will be denied.
+
+  This is because we are attempting to edit a field on the pod that is not editable.
+
+  ```bash
+    % kubectl edit pod myapp-pod
+    error: pods "myapp-pod" is invalid
+    A copy of your changes has been stored to "/var/folders/7v/btvm72w972qbg3zcxgfnl80m0000gn/T/kubectl-edit-1351316848.yaml"
+    error: Edit cancelled, no valid changes were saved
+  ```
+
+  A copy of the file with your changes is saved in a temporary location as shown above.
+
+  We can then delete the existing pod by running the command,
+
+  ```bash
+  kubectl delete pod webapp
+  ```
+
+  Then create a new pod with your changes using the temporary file,
+
+  ```bash
+  kubectl create -f /var/folders/7v/btvm72w972qbg3zcxgfnl80m0000gn/T/kubectl-edit-1351316848.yaml
+  ```
+
+2. The second option is to extract the pod definition in YAML format to a file using the command.
+
+  ```bash
+  kubectl get pod myapp-pod -o yaml > my-new-pod.yaml
+  ```
+
+  Then make the changes to the exported file using an editor (vi editor). Save the changes
+
+  > vi my-new-pod.yaml
+
+  Then delete the existing pod
+
+  > kubectl delete pod myapp-pod
+
+  Then create a new pod with the edited file
+
+  > kubectl create -f my-new-pod.yaml
+
+###### Edit Deployments
+
+With Deployments we can easily edit any field/property of the POD template.
+
+Since the pod template is a child of the deployment specification, with every change the deployment will automatically delete and create a new pod with the new changes. 
+
+So if you are asked to edit a property of a POD part of deployment we may do that simply by running the command
+
+> kubectl edit deployment my-deployment
+
+#### Environment Variables
+
+When we want to set an environment, we can use the env attribute in the YAML file. Env is an array so every item under the env property startus with a "-" indicating an item in the array.
+
+Each item has a name and a value property.
+The name is the name of the environment variable made available with the container and the value is its value.
+
+```properties
+spec:
+  env:
+    - name:  app_colur
+      value: blue
+```
+
+A direct way of specifying the environment variables using a plain key-value pair format. However there are other ways of setting the environment variables such as using config maps and secrets.
+
+The difference in this case is that instead of specifying value we say `valueFrom` and the specification od conflict maps and secret keys.
+
+```properties
+spec:
+  env:
+    - name:  app_colur
+      valueFrom:
+        configMapKeyRef:
+```
+
+```properties
+spec:
+  env:
+    - name:  app_colur
+      value: blue
+```
+
+##### ConfigMaps
+
+When we have a lot of pod definition file, It will become difficult to manage the environment data stored within the various files.
+
+We can take this information out of the pod definition file and manage it centrally using configuration maps.
+
+Config maps are used to pass configuration data in the form of key value pairs in Kubernetes.
+
+When the pod is created, the config map is injected into the pod. So the key-value parents are available as environment variables for the application hosted inside the container in the pod.
+
+There are two phases involved in configuring config maps.
+
+1. Create the ConfigMap
+2. Inject them into the pod.
+
+There are two ways of creating a ConfigMap. The imperative way, without using a definition file and the declarative way by using a config  map definition file.
+
+<span style="color:red">Imperative</span>
+> kubectl create configmap
+
+<span style="color:green">Declarative</span>
+> kubectl create -f config-map.yaml
+
+**<span style="color:red">Imperative Example:</span>**
+
+```bash
+kubectl create configmap \
+  <config-name> --from-literal=<key>=<value>
+```
+
+```bash
+kubectl create configmap \
+  app-config --from-literal=APP_COLOR=blu
+```
+If you wish to add addinitiol key value pairs, simply specify the from-literal options multiple times.
+
+```bash
+kubectl create configmap \
+  app-config --from-literal=APP_COLOR=blu \
+  app-config --from-literal=APP_MOD=prod
+```
+
+However, this will get complicated when we have too many configuration items.
+
+Another way to input configuration data is through a file.
+
+```bash
+kubectl create configmap \
+  app-config --from-file=app_config.properties
+```
+
+**<span style="color:green">Declarative Example:</span>**
+
+For the declarative approach, we can create a definition file. In the same way as in the pod file; file has apiVersion, type and metadata. But here we have data instead of spec. Let's say the file is named config-map.yaml.
+
+```properties
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+data:
+  APP_COLOR: blue
+  APP_MODE: prod
+```
+> kubectl create -f config-map.yaml
+
+We can create as many ConfigMaps as wee need in the same way for vaious different purposes.
+
+- To list configmaps
+  > kubectl get configmaps
+
+- To list the configuration data
+  > kubectl describe configmaps
+
+###### ConfigMap in Pods
+
+Below is a simple example pod definition file for the web application. 
+
+```properties
+apiVersion: v1
+kind: Pod
+metadata:
+  name: simple-webapp-colur
+  labels:
+    name: simple webapp-color
+spec:
+  containers:
+  - name: simple-webapp-color
+    image: simple-webapp-color
+    ports:
+      - containerPort: 8080
+```
+
+To inject an environmet variable, add a new property to the container called `envFrom`. The envFrom property is a list so we can pass as many environment variables as required.
+
+Each item in the list corresponds to a configmap item. We can specify name of the configMap we created earlier.
+
+```properties
+spec:
+  containers:
+  - name: simple-webapp-color
+    image: simple-webapp-color
+    ports:
+      - containerPort: 8080
+    envFrom:
+      - configMapRef:
+          name: app-config
+```
+
+The name of the ConfigMapRef should be the same as the name of the config-map we created before. And now we just need to create a pod with the above definition file.
+
+> kubectl create -f pod-definition.yaml
