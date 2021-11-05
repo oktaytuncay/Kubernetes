@@ -1146,3 +1146,231 @@ spec:
 The name of the ConfigMapRef should be the same as the name of the config-map we created before. And now we just need to create a pod with the above definition file.
 
 > kubectl create -f pod-definition.yaml
+
+##### Secrets
+
+Let's assume, we have a simple python we application that connect to the MySQL database.
+
+```python
+import os
+from flash import Flask
+
+app = Flask (__name__)
+
+@app.route("/")
+def main():
+
+  mysql.connector.connect(host=`mysql`, database=`mysql`, user=`root`, password=`passwd`)
+
+  return render_template('hello.html', color=fetchcolor())
+
+if __name__ == "__main__":
+  app.run(host="0.0.0.0", port="8080") 
+```
+
+In this code; hostname, username, and password are hard-coded which is not recommended.
+
+One option would be to move these values into a conflict map but the conflict map stores configuration data in plain text format. So, it's definetly not the right place to store a password.
+
+Secrets are used to store sensitive information like passowrd or keys. The're similar to conflict maps except that they're stored in an encoded or hashed format as with conflict maps.
+
+There are two steps involved in working with secrets.
+
+1. Create a secret.
+2. Injected into the pod.
+
+There are two ways of creating a secret. As in ConfigMap, imperative and declarative.
+
+<span style="color:red">Imperative</span>
+
+```bash
+kubectl create secret generic 
+  <secret-name> --from-literal=<key>=<value>
+```
+
+If you want to add additional key-value paris, you can add as many --from-literal options as you want.
+
+```bash
+kubectl create secret generic \
+  app-secret --from-literal=DB_Host=mys \
+             --from-literal=DB_user=root \
+             --from-literal=DB_Password=paswrd
+```
+
+However this could get complicated when you have too many secrets to pass. In another wat to input the secret data is through the file. Use the from file option to specify a path to the file that contains the required data.
+
+```bash
+kubectl create secret generic \
+  <secret-name> --from-file=app_secret.properties
+```
+
+The data from this file is read and stored under the name of the file. 
+
+<span style="color:green">Declarative</span>
+
+```bash
+kubectl create -f secret-data.yml
+```
+
+For declarative metod, we create a definition file juts like how we did the conflict map. The file contains apiVersion, type, meta and data section as below and let's name the file secret-data.yaml to use it in the next steps.
+
+```properties
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secret
+data:
+  DB_Host: mysql
+  DB_User: root
+  DB_Password: paswrd
+```
+
+Here we have specified the data in plain text which is not very secure. So while creating a secret with a declarative approach, we must specify the secret values in a hashed format as below.
+
+```properties
+data:
+  DB_Host: bXlzcWw=
+  DB_User: cm9vdA==
+  DB_Password: cGFzd3Jk
+```
+
+But how do we convert the data from plain text to an encoded format? 
+On a linux host, run the command `echo -n` followed by the exte we're trying to convert.
+
+```bash
+% echo -n 'mysql' | base64
+bXlzcWw=
+
+% echo -n 'root' | base64
+cm9vdA==
+
+% echo -n 'paswrd' | base64
+cGFzd3Jk
+```
+
+`kubectl get secrets` command lists user-created and Kubernetes-created secrets.
+
+```bash
+% kubectl get secrets
+NAME                  TYPE                                  DATA   AGE
+default-token-pnx9d   kubernetes.io/service-account-token   3      5d14h
+```
+
+To view more information, `kubectl describe secrets` command can be used. This shows the attributes in the secret but hides the value themselves to view the values as well.
+
+When we execute the `kubectl get secret <secret-name> -o yaml` command, we can see the hash value. 
+
+So, how do we decode these hashed values? When we run the following commands, we can get the actual passwords.
+
+```bash
+% echo -n 'bXlzcWw=' | base64 --decode
+mysql%                                                                        
+
+% echo -n 'cGFzd3Jk' | base64 --decode
+paswrd%
+```
+
+##### Secrets in Pods
+
+Below is a simple example pod definition file for the web application. 
+
+```properties
+apiVersion: v1
+kind: Pod
+metadata:
+  name: simple-webapp-colur
+  labels:
+    name: simple webapp-color
+spec:
+  containers:
+  - name: simple-webapp-color
+    image: simple-webapp-color
+    ports:
+      - containerPort: 8080
+```
+
+To inject an environmet variable, add a new property to the container called `envFrom`. The envFrom property is a list so we can pass as many environment variables as required.
+
+Each item in the list corresponds to a secret item in the list. We can specify name of the secret we created earlier.
+
+```properties
+spec:
+  containers:
+  - name: simple-webapp-color
+    image: simple-webapp-color
+    ports:
+      - containerPort: 8080
+    envFrom:
+      - secretRef:
+          name: app-secret
+```
+
+The name of the secretRef should be the same as the name of the secret we created before. And now we just need to create a pod with the above definition file.
+
+> kubectl create -f pod-definition.yaml
+
+What we just saw was injection secrets as environment varialbles into the pods. There are other way to inject secrets into pods. 
+
+We can inject a single environment variables;
+
+```properties
+env:
+  - name: DB_Password
+    valueFrom:
+      secretKeyRef:
+        name: app-secret
+        key: DB_Passoword
+```
+
+Or we can inject the whole secret as files in a volume;
+
+```properties
+volumes:
+  - name: app-secret-volume
+    secret:
+      secretName: app-secret
+```
+
+If you were to mount the secret as a volume in the pod, each attribute in the secret is created as a file with the value of the secret as it's content.
+
+```bash
+% ls /opt/app-secret-volumes
+DB_Host       DB_Password         DB_User
+```
+
+In this case, since we have three attributes in our secret, there files are created. And If we look at the contents of the DB_Password file we see the password in it.
+
+```bash
+% cat /opt/app-secret-volumes/DB_Password
+paswrd
+```
+
+Secrets encode data in base64 format. 
+Anyone with the base64 encoded secret can easily decode it. As such the secrets can be considered as not very safe.
+
+
+
+The concept of safety of the Secrets is a bit confusing in Kubernetes. The <a href="https://kubernetes.io/docs/concepts/configuration/secret/" target="_blank">**kubernetes documentation**</a> page and a lot of blogs out there refer to secrets as a **safer option** to store sensitive data. 
+
+They are safer than storing in plain text as they reduce the risk of accidentally exposing passwords and other sensitive data. 
+
+It's not the secret itself that is safe, it is the practices around it. 
+
+Secrets are not encrypted, so it is not safer in that sense. 
+However, some best practices around using secrets make it safer. As in best practices like:
+
+* Not checking-in secret object definition files to source code repositories.
+* <a href="https://kubernetes.io/docs/tasks/administer-cluster/encrypt-data/" target="_blank">**Enabling Encryption at Rest**</a> for Secrets so they are stored encrypted in etcd. 
+
+Also the way kubernetes handles secrets. Such as:
+
+* A secret is only sent to a node if a pod on that node requires it.
+* Kubelet stores the secret into a tmpfs so that the secret is not written to disk storage.
+* Once the pod that depends on the secret is deleted, kubelet will delete its local copy of the secret data as well.
+
+Read about the <a href="https://kubernetes.io/docs/concepts/configuration/secret/#protections" target="_blank">**Protections**</a> and <a href="https://kubernetes.io/docs/concepts/configuration/secret/#risks" target="_blank">**Risks**</a>  of using secrets.
+
+There are other better ways of handling sensitive data like passwords in Kubernetes, such as using tools like Helm Secrets, HashiCorp Vault.
+
+#### Docker Security
+
