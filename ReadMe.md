@@ -4,7 +4,7 @@
 
 ## Table of Contents
 
-- **Preparation Guide for Kubernetes**
+- **Preparation Guide for Kubernetes Application Developer**
   - <a href="https://github.com/oktaytuncay/Kubernetes/blob/master/kubernetes_md/kubernetes_en.md" target="_blank">**`English`**</a>
 
 ---
