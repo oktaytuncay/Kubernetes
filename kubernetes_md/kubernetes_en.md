@@ -1460,3 +1460,166 @@ spec:
 ```
 
 To add capabilities use the capabilities option and specify a list of capabilities. Capabilities are only supported at the container level, not at the pod level.
+
+#### Service Account
+
+There are two types of accounts in Kubernetes, a user account and a service account. A service account could be an account used by an application to interact with a Kubernetes cluster. For example, a monitoring application like Prometheus uses a service account to pull the Kubernetes API for performance metrics, and an automated built tool like Jenkins uses these service accounts to deploy applications on the Kubernetes cluster.
+
+![pic12](images/12.png)
+
+Let's say we developed a simple Kubernetes dashboard application called *Kubernetes Dashboard*, It's a simple built-in Python application and when deployed all it does is get the list of pods in the Kubernetes cluster by sending a request to Kubernetes. API and displayed on a web page.
+
+In order for this application to query the Kubernetes API, it has to be authenticated. For that, we can use a service account.
+
+**To create a service account:**
+
+  > kubectl create serviceaccount <account_name>
+
+**Example:**
+
+  ```bash
+  % kubectl create serviceaccount dashboard-sa
+  serviceaccount/dashboard-sa created
+
+  % kubectl get serviceaccount          
+  NAME           SECRETS   AGE
+  dashboard-sa   1         17s
+  default        1         19d
+
+  % kubectl describe serviceaccount dashboard-sa
+  Name:                dashboard-sa
+  Namespace:           dev
+  Labels:              <none>
+  Annotations:         <none>
+  Image pull secrets:  <none>
+  Mountable secrets:   dashboard-sa-token-bkhcx
+  Tokens:              dashboard-sa-token-bkhcx
+  Events:              <none>
+  ```
+
+When the service account is created it also automatically generates a token, the service account token is what should be used by the external application when authenticating to the Kubernetes API.
+
+When a service account is created, it first creates the service account object and then generates a token for the service account. It then creates a secret object and stores that token inside the secret object.
+
+The secret object is then linked to the service account. 
+
+**To view the token viewed the secret object:**
+
+```bash
+% kubectl describe secret dashboard-sa-token-bkhcx
+Name:         dashboard-sa-token-bkhcx
+Namespace:    dev
+Labels:       <none>
+Annotations:  kubernetes.io/service-account.name: dashboard-sa
+              kubernetes.io/service-account.uid: 8e5d5143-cc54-488f-83f1-9d0429696b13
+
+Type:  kubernetes.io/service-account-token
+
+Data
+====
+ca.crt:     1285 bytes
+namespace:  3 bytes
+token:      eyJhbGciOiJSUzI1NiIsImtpZCI6IndvMlZxVkkzYlY0ZkxhcEF3a1llRHJaSlpmQ0VoMHJXX3FBSmRZTkFndVEifQ.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJkZXYiLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlY3JldC5uYW1lIjoiZGFzaGJvYXJkLXNhLXRva2VuLWJraGN4Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZXJ2aWNlLWFjY291bnQubmFtZSI6ImRhc2hib2FyZC1zYSIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VydmljZS1hY2NvdW50LnVpZCI6IjhlNWQ1MTQzLWNjNTQtNDg4Zi04M2YxLTlkMDQyOTY5NmIxMyIsInN1YiI6InN5c3RlbTpzZXJ2aWNlYWNjb3VudDpkZXY6ZGFzaGJvYXJkLXNhIn0.MGsLrx-DpbtQzOunn4GciVt0tMApcVHaCnZuyau4T9JQaZvIRp1GnKUHH_Bd29H1dp_fCo8Qnw3MDp_U7-H3SATwxFcXdMFqcGygv6tlPzsLueKLt2Ac83bTtn3oNFlQoy3gBqTGQhrHiam6vObVgh3pNP0XPn2lElN7kszrDr-6WwoqcFwigdFFLn-9_HBIbaft1w620rmDQnlAXYq-nycOwjF7Vk__i9wGLfRKM7XccdhLhd21-w4mtYvnPqNvMGtcGryUkogecDj8bkkiTUyPl5GkWPBfsjsjpgZsflhC67H9twbtDUk5pkXGn06iWl-T82l8miruqtGtP1zw2w
+```
+
+This token can be used as an authentication token while making a risky call to the Kubernetes. 
+
+For example, in the following example, using the curl command, we could provide a token as an authorization header while making a rest call to the Kubernetes API.
+
+```bash
+curl https://192.168.17.115/api -insecure --header "Authorization: Bearer eyJhbG..."
+```
+
+What if the 3rd party application is hosted on the Kubernetes cluster itself? we can have the Prometheus application deployed on the Kubernetes cluster itself. 
+
+In that case, this whole process of exporting the service account token and configuring the third party application to use it can be made simpleport automatically mounting the service token secret as a volume inside the pod.
+
+That way, the token to access the Kubernetes API is already placed inside the pod and can be easily read by the application, we don't have to provide it manually.
+
+When we look at the list of service accounts, we will see that there is a default service account that exits already for all namespace in Kubernetes.
+
+```bash
+% kubectl get serviceaccount          
+NAME           SECRETS   AGE
+dashboard-sa   1         26m
+default        1         19d
+```
+
+A service account named default is automatically created. Each namespace has its own default service account. Whenever a pod is created, the default service account and it's token are automatically mounted to that pod as a volume mount.
+
+For example, we have a pod named myapp-pod. We haven't specified any secrets or elements in the definition file.
+
+```bash
+% kubectl get pods
+NAME        READY   STATUS    RESTARTS   AGE
+myapp-pod   1/1     Running   0          19d
+```
+
+However, when the pod is created, If we look at the details of the pod by running `kubectl describe pod myapp-pod` command, we see that volume is automatically created from the secret named default token. which is in fact the secret containing the token for this default service account. 
+
+```bash
+% kubectl describe pod myapp-pod              
+...
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from default-token-pnx9d (ro)
+Conditions:
+...
+```
+
+The secret token mounted at location `/var/run/secrets/kubernetes.io/serviceaccount` inside the pod.
+
+From inside the pod, If we run the following command to list the contents of the directory, we'll see the secret mounted as three separate files.
+
+```bash
+% kubectl exec myapp-pod -- ls /var/run/secrets/kubernetes.io/serviceaccount 
+ca.crt
+namespace
+token
+```
+
+If we view the contents of that file, we'll see the token to be used for accessing the Kubernetes API.
+
+```bash
+% kubectl exec myapp-pod -- cat /var/run/secrets/kubernetes.io/serviceaccount/token
+eyJhbGciOiJSUzI1NiIsImtpZCI6IndvMlZxVkkzYlY0ZkxhcEF3a1llRHJaSlpmQ0VoMHJXX3FBSmRZTkFndVEifQ.eyJpc3MiOiJrdWJlcm5ldGVzL3NlcnZpY2VhY2NvdW50Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9uYW1lc3BhY2UiOiJkZXYiLCJrdWJlcm5ldGVzLmlvL3NlcnZpY2VhY2NvdW50L3NlY3JldC5uYW1lIjoiZGVmYXVsdC10b2tlbi1wbng5ZCIsImt1YmVybmV0ZXMuaW8vc2VydmljZWFjY291bnQvc2VydmljZS1hY2NvdW50Lm5hbWUiOiJkZWZhdWx0Iiwia3ViZXJuZXRlcy5pby9zZXJ2aWNlYWNjb3VudC9zZXJ2aWNlLWFjY291bnQudWlkIjoiNDYzMDRjNDItN2VhMC00YWQ1LWFhYmYtYjc3N2MzNzdiNDkxIiwic3ViIjoic3lzdGVtOnNlcnZpY2VhY2NvdW50OmRldjpkZWZhdWx0In0.qWqP5YQxEOSoDmJdtM32AtrPhnDW9AdPnEpd83rjAspNmXGOPe9rfolhfqxmY3RCsQza3wF12malZPoNBtLlH5Rb2x5cC20KfEZu_ysZeaKw7FiF0qU0YKQ0WL_r8Ws-fwxGLkFd4y_Pa5qum8Sv2FImmq1I57K4PwrsqmEs3sVJMT1i3lURbpbNNeBBumDZoLRcWkojipFgkRS0op04irI-ru3hXHMOv4MGOw7DF8pjPqpudIfcDVYJF8sD3-nTVImCCd_Vm14V-uBNqIiXcJ1JdwM6Ktmh4NO2Hb-NxbjsM0DtDz6oR6z2brl7RRf_PQsLMRtrSe7-Y8ls9HCJkw%
+```
+
+It is important to note that the default service account is very much restricted. It only has permission to run basic common API queries. 
+
+If you'd like to use a different service account, we can modify the pod definition file, include a service account field, and specify the name of the new service account. 
+
+```properties
+apiVersion: v1
+kind: Pod
+metadata:
+    name: myapp-pod
+    labels:
+        app: myapp
+        type: front-end
+spec:
+    containers:
+        - name: nginx-container
+          image: nginx
+    serviceAccountName: dashboard-sa
+```
+
+We can not edit the service account of an existing pod. We must delete/re-create the pod. However, in case of a deployment, we'll able to edit the service account as any changes to the pod definition file will automatically trigger a new rollout for the deployment.
+
+So the deployment will take care of deleting and creating new pods with the right service account.
+
+So keep in mind that Kubernetes automatically mounts the default service account if we haven't specified it explicitly. We may choose not to mount a service account automatically by setting the `automountServiceAccountToken`
+
+```properties
+apiVersion: v1
+kind: Pod
+metadata:
+    name: myapp-pod
+    labels:
+        app: myapp
+        type: front-end
+spec:
+    containers:
+        - name: nginx-container
+          image: nginx
+    automountServiceAccountToken: false
+```
