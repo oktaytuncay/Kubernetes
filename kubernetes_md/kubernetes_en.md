@@ -1374,3 +1374,89 @@ There are other better ways of handling sensitive data like passwords in Kuberne
 
 #### Docker Security
 
+##### Process Isolation
+
+Unlike virtual machines, containers are not completely isolated from their host. Containers and the host of containers share the same kernel. Containers are isolated using Namespace in Linux. The host has a Namespace and the containers have their own Namespace. All the processors run by the containers are in fact run on the host itself, but in their own namespace. As far as the docker container is concerned, it is in its own namespace and it can see its own process only, It can not see anything outside of it or in any other namespace.
+
+Suppose we are running the `docker run ubuntu sleep 3600` command in Docker, when we list the processes from withing the docker container, we see the sleep process with a process id of one.
+
+```bash
+% ps aux
+USER          PID  %CPU %MEM      VSZ    RSS   TT  STAT STARTED      TIME COMMAND
+root          1     0.0  0.0      4708   724   ??  S    Mon09AM 156:58.82 sleep 3600
+```
+
+For the docker host all processes of its own as well as those in the child Namespaces are visible as just another process in the system. So, when we list the processes on the host, we see a list of processes including the sleep command but with a different process id.
+
+
+```bash
+root               229   0.7  0.1  4397552  12204   ??  Ss   Mon09AM   1:24.24 /usr/libexec/trustd
+root                 1   0.6  0.1  4360104  18148   ??  Ss   Mon09AM   9:24.69 /sbin/launchd
+root               146   0.6  0.0  4378072   5128   ??  Ss   Mon09AM   0:26.44 /usr/libexec/diskarbitrationd
+oktaytuncay      27808   0.5  2.3 34550456 389200   ??  S    12:58PM   1:12.97 /Applications/Google Chrome.app/Contents/Frameworks/
+root              1754   0.0  0.0     4708    724   ??  S    Mon09AM 156:58.82 sleep 3600
+```
+
+This is because the processes can have different process ids in different namespaces and that's how docker isolates containers within the system.
+
+##### Users
+
+The docker host has a set of users. By default docker processes run within containers as the root user. This can be seen in the output of the command we ran above. If you don't want to run with root user, `--user` parameter can be used.
+
+> docker run --user=1017 ubuntu sleep 3600
+
+Another way to enforce user security is to have this defined in the docker image itself at the time of creation. For example, we can use the default ubunut image and set the used id to 1017 using the user instruction. Then we can build the custom image.
+
+By default docker runs a container with a limited set of capabilities. And so the process running within the container do not have the privileges to reboot the host or perform operations that can disturb the host or other containers running on the same host. 
+
+If you wish to override this behaviour and provide additional privileges then what is available, use the `cap-add` option in the docker run command.
+
+> docker run --cap-add MAC_ADMIN ubuntu
+
+Similarly, we can drop privileges as well using the `cap-drop` option or in case we wish to run the container with all privileges enabled, then we can use `privileged flag`
+
+> docker run --cap-drop KILL ubuntu
+
+> docker run --privileged ubuntu
+
+##### Security Contexts
+
+When we run a docker container, we have the option to define a set of security standards such as `--user`, `--cap-add`, `--cap-drop`. These can be configred in Kubernetes as well. As we know already in Kubernetes containers are encapsulated in pods. We may choose to configure the security settings at a container level or at a pod level.
+
+If we configure it a pod level, the settings will carry over to all the containers within the pod. If we configure it at both the pod and container, the settings on container will override the settings on yhe pod.
+
+The following pod runs an Ubuntu image with the sleep command. To configure the security context in the container, we can  add a field called `securityContext` under the spec section.
+
+```properties
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-pod
+spec:
+  securityContext:
+    runAsUser: 1000
+  containers:
+    - name: ubuntu
+      image: ubuntu
+      command: ["sleep","3600"]
+```
+
+To set the same configuration on the container level, we just need to move the whole section under the container specification as below.
+
+```properties
+apiVersion: v1
+kind: Pod
+metadata:
+  name: web-pod
+spec:
+  containers:
+    - name: ubuntu
+      image: ubuntu
+      command: ["sleep","3600"]
+      securityContext:
+        runAsUser: 1000
+        capabilities:
+          add: ["MAC_ADMIN"]
+```
+
+To add capabilities use the capabilities option and specify a list of capabilities. Capabilities are only supported at the container level, not at the pod level.
