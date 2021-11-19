@@ -1737,6 +1737,11 @@ So taints are set on nodes and tolerations are set on pods. So how does it look 
 kubectl taint nodes node-name key=value:taint-effect
 ```
 
+- To remove the taint on the node
+  ```bash
+  kubectl taint nodes node-name key=value:taint-effect-
+  ```
+
 IF we would like to dedicate the node to pods in application blue, then the key value pair would be app=blue.
 
 The `taint-effect` defines what would happen to the pods if they do not tolerate the taint. There are three main effects.
