@@ -1706,3 +1706,101 @@ kubectl apply -f memory-defaults.yaml --namespace=default-mem-example
 Now if a Container is created in the default-mem-example namespace, and the Container does not specify its own values for memory request and memory limit, the Container is given a default memory request of 256 Mb and a default memory limit of 512 Mb.
 
 #### Taints & Tolerations
+
+Taints and tolerations work together to ensure that pods are not scheduled onto inappropriate nodes. One or more taints are applied to a node; this marks that the node should not accept any pods that do not tolerate the taints.
+
+Taints and tolerations are used to set restrictions on what pods can be scheduled on that node. 
+
+Let's start with the simple cluster with three worker nodes. When the pods are created, the Kubernetes scheduler tries to place these pods on the available worker nodes.
+
+As of now there are no restrictions or limitations and scheduler places the pods across all of the nodes to balance them out equally.
+
+![pic13](images/13.png)
+
+So let's say we have dedicated resources on Node 1 for a particular use case or application. So, we would like only those pods that belong to this application to be places on Node 1.
+
+First, we prevent all pods from being placed on the node by placing a taint on the node. Let's call it blue.
+
+So in this case none of the pods can be placed on Node 1, as none of them can tolerate the taint blue. This solves half of our requirement. No unwanted pods are going to be places on this node. 
+
+The other half is to ensure that certain pods are placed on this node. For this, we must specify which pods are tolerant of this particular taint. 
+
+In our case, we want to allow only pod D to be placed on this node. Thus, we add toleration to pod D and pod D is toleranted to blue.
+
+So when the scheduler tries to place this pod on Node 1, It goes through and Node 1 can only accept pods that can tolerate the taint blue.
+
+![pic14](images/14.png)
+
+So taints are set on nodes and tolerations are set on pods. So how does it look in the command line?
+
+```bash
+kubectl taint nodes node-name key=value:taint-effect
+```
+
+IF we would like to dedicate the node to pods in application blue, then the key value pair would be app=blue.
+
+The `taint-effect` defines what would happen to the pods if they do not tolerate the taint. There are three main effects.
+
+- **NoSchedule :** The pods will not be scheduled in the node as described above
+- **PreferNoSchedule :** The system will try to avoid placing the pod on the node but that is not guarenteed.
+- **NoExecute :** New pods will not be scheduled on the node and existing pods on the node. If any, will be evicted if they do not tolerate the taint. These pods may have been scheduled on the node before taint was applied to the node.
+
+**Example :**
+```bash
+kubectl taint nodes node1 app=blue:Noschedule
+```
+
+Tolerations are added to pods. To add a toleration to a pod, in the spec section of the pod definition file add a section called tolerations. Move the same values used while creating the taint under the section.
+
+```properties
+apiVersion: v1
+kind: Pod
+metadata:
+    name: myapp-pod
+    labels:
+        app: myapp
+        type: front-end
+spec:
+    containers:
+        - name: nginx-container
+          image: nginx
+    tolerations:
+    - key: "app"
+      operator: "Equal"
+      value: "blue"
+      effect: "NoSchedule"
+```
+
+When the pods are created or updated with the new tolerations they are either not scheduled on nodes or evicted from the existing nodes, depending on the effects set.
+
+##### Taint - NoExecute
+
+![pic15](images/15.png)
+
+We had three nodes running some workloads. We do not have any taints or tolerations at this point. So they are schedued this way.
+
+After scheduled, we then decide to dedicate Node 1 for a special application and as such we taint the node with the application name and add a toleration to the pod that belongs to the application, which happens to be pod D in this case.
+
+While tainting the node we set to taint effect to NoExecute. And as such once the taint on the node takes effect it evicts pod C from the node. Which simply means that the pod is killed.
+
+The pod D continues to run on the node as it has a toleration to the taint blue.
+
+Remember taints and tolerations are only meant to restrict nodes from excepting certain pods. In this case Node 1 can only accept pod D but id does not guarantee that pod D will always be placed on Node 1 since there are no taints or restrictions applied on the other two nodes.
+
+So remember taints and tolerations does not tell the pod to got to a particular node. Instead it tells the node to only accept pods with certain tolerations.
+
+If the requirement is to restrict a pod to certain nodes, this can be achieved with `node affinity`.
+
+So far we have only been referring to the worker nodes. We also have master nodes in the cluster, which is technically just another node that has all the capabilities of hosting a pod plus it runs all the management software.
+
+If you noticed, the scheduler does not schedule any pods on the master node. Why is that?
+
+When the Kubernetes cluster is first set up, a taint is set on the master node. Automatically that prevents any pods from being scheduled on this node. 
+
+We can see this and modify this behavior if needed. However a best practice is not to deploy application workloads on a master node. 
+
+- To see this taint:
+
+  ```bash
+  kubectl describe node kubemaster | grep Taint
+  ```
