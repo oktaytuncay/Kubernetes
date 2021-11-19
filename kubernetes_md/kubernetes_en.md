@@ -1623,3 +1623,86 @@ spec:
           image: nginx
     automountServiceAccountToken: false
 ```
+
+#### Resource Requirements
+
+Whenever a pod is placed on a node, it consumes resources available to that node. The scheduler takes into consideration the amount of resources required by a pod and available resources on the nodes.
+
+If the node has no sufficient resources, the scheduler avoids placing the pod on that node, instead of placing the pod on one where sufficient resources are available.
+
+If there is no sufficient resources available on any of the nodes, Kubernetes host back scheduling the pods and we'll see the pod in a pending state.
+
+By default, Kubernetes assumes that a pod or a container withing a pod, requires 0.5 CPU and 256 Mb of memory. When the scheduler tries to place the pod on a node, It uses these numbers to identify a node which has sufficient amount of resources available.
+
+If we know that our application will need more than this numbers, we can modify numbers by specifying in the pod or deployment definition file as below.
+
+```properties
+apiVersion: v1
+kind: Pod
+metadata:
+  name: simple-webapp-colur
+  labels:
+    name: simple webapp-color
+spec:
+  containers:
+  - name: simple-webapp-color
+    image: simple-webapp-color
+    ports:
+      - containerPort: 8080
+    resources:
+      requests:
+        memory: "1G"
+        cpu: 1
+```
+
+We can also specify a value as low as 0.1 CPU. 0.1 CPU can also be expressed as 100m. 100m CPU, 100 milliCPU, and 0.1 CPU are all the same. 1m is the lowest possible figure, it cannot be less than that.
+
+1 count of CPU is equivalent to 0.5 OCPU, 1 AWS vCPU, 1 Azure Core and 1 Hyperthread. 
+
+We could request a higher numer of CPU for the container, provided our nodes are sufficiently funded.
+
+In the docker world, the docker container has no limit on the resources it can consume on a node. Suppose a container starts with a CPU on a node and moment by moment it may demand more resources and consume resources reserved for other processes in the node.
+
+However, we can set a limit for the resource usage on this pod by adding a limited section under the resource section in the definition file.
+
+```properties
+    resources:
+      requests:
+        memory: "1G"
+        cpu: 1
+      limits:
+        memory: "2G"
+        cpu: 2
+```
+
+When the pod is created, Kubernetes sets new limits for the container. The limits and requests are set for each container within the pod. 
+
+A container can not use more CPU resources than its limit. However, this is not the case with the memory. A container can use more memory resources than its limit. So if a pod tries to consume more memory than its limit constantly, the pod will be terminated.
+
+Default numbers can also be changed. To do this, LimitRange must be created as follows. The configuration specifies a default memory request and a default memory limit.
+
+```bash
+kubectl create namespace default-mem-example
+```
+
+```properties
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: mem-limit-range
+spec:
+  limits:
+  - default:
+      memory: 512M
+    defaultRequest:
+      memory: 256M
+    type: Container
+```
+
+```bash
+kubectl apply -f memory-defaults.yaml --namespace=default-mem-example
+```
+
+Now if a Container is created in the default-mem-example namespace, and the Container does not specify its own values for memory request and memory limit, the Container is given a default memory request of 256 Mb and a default memory limit of 512 Mb.
+
+#### Taints & Tolerations
