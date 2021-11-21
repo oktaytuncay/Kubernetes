@@ -1818,4 +1818,41 @@ Let' say, we have a three-node cluster and two are smaller nodes with lower hard
 
 We have different kinds of workloads running in the cluster. For workloads that require higher horsepower, we want to forward it to the larger node in case the job requires extra resources.
 
-However in the current default setup, any pod can go to any nodes. So 
+However in the current default setup, any pod can go to any nodes. So, if the pod is deployed to pod 2 or 3, it may not receive the resource it needs.
+
+To avoid this, we can set a limitation on the pods so that they only run on particular nodes. There are two ways to do this.
+
+The first is using node selectors, which is the simple and easier method. To limit the pod to run on the larger node, we can add a new property called `nodeSelector` to the spec section and specify the size as `Large`.
+
+```properties
+apiVersion: v1
+kind: Pod
+metadata:
+  name: myapp-pod
+spec:
+  container:
+  - name: data-processor
+    image: data-processor
+  nodeSelector:
+    size: Large
+```
+
+As we mentioned above, the `size: Large` key-value pairs are the labels assigned to the nodes. The scheduler uses these labels to match and identify the right node to place the pods on.
+
+To use labels in a knows select like the one above, we need to have labeled our nodes before creating this pod. To label the node we can use the following command.
+
+```bash
+kubectl label nodes <node-name> <label-key>=<label-value>
+```
+
+```bash
+kubectl label nodes Node-1 size=Large
+```
+
+After this point, When the pod is created it's placed on node-1 as desired.
+
+nodeSelector has served this purpose, but it has some limitations. To achieve our goal here, it was enough to use a single label and selector. But what if our requirement is much more complex?
+
+For instance, we should be able to say something like `place the pod on a large or medium node` or `place the pod on any nodes that are not small`.
+
+We can not achieve this using nodeSelectors. For more complex requirements like this, affinity and anti-Affinity features can help us.
