@@ -1809,3 +1809,5 @@ We can see this and modify this behavior if needed. However a best practice is n
   ```bash
   kubectl describe node kubemaster | grep Taint
   ```
+
+#### Node Selectors
