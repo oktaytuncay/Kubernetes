@@ -1856,3 +1856,5 @@ nodeSelector has served this purpose, but it has some limitations. To achieve ou
 For instance, we should be able to say something like `place the pod on a large or medium node` or `place the pod on any nodes that are not small`.
 
 We can not achieve this using nodeSelectors. For more complex requirements like this, affinity and anti-Affinity features can help us.
+
+#### Node Affinity
