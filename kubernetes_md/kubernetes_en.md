@@ -1811,3 +1811,11 @@ We can see this and modify this behavior if needed. However a best practice is n
   ```
 
 #### Node Selectors
+
+![pic16](images/16.png)
+
+Let' say, we have a three-node cluster and two are smaller nodes with lower hardware resources and one of them is a larger node and configured with higher resources.
+
+We have different kinds of workloads running in the cluster. For workloads that require higher horsepower, we want to forward it to the larger node in case the job requires extra resources.
+
+However in the current default setup, any pod can go to any nodes. So 
