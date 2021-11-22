@@ -1858,3 +1858,112 @@ For instance, we should be able to say something like `place the pod on a large 
 We can not achieve this using nodeSelectors. For more complex requirements like this, affinity and anti-Affinity features can help us.
 
 #### Node Affinity
+
+The primary purpose of node affinity feature is to ensure that pods are hosted on particular nodes.
+
+We can not provide advanced expressions like `or`, `or not` with nodeSelector.
+
+Node affinity feature provides us with advanced capabilities to limit pod placement on specific nodes.
+
+With great power comes great complexity.
+
+The same thing we do in nodeSelector is done in node affinity as follows.
+
+- Placed the pod on the Large node.
+
+```properties
+apiVersion: v1
+kind: Pod
+metadata:
+  name: myapp-pod
+spec:
+  container:
+  - name: data-processor
+    image: data-processor
+
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+        - matchExpressions:
+          - key: ksize
+            operator: In
+            values:
+            - Large
+```
+
+If we think our pod could be placed on a large or a medium node, we could simply add the value to the list of values like below.
+
+```properties
+- matchExpressions:
+  - key: size
+    operator: In
+    values:
+      - Large
+      - Medium
+```
+
+We can use the `not in` operator to say something like the following.
+
+```properties
+- matchExpressions:
+  - key: size
+    operator: NotIn
+    values:
+      - Small
+```
+
+The `exists` operator will simply check if the label size exist on the nodes and we don't need the values section for that as it does not compare the values.
+
+```properties
+- matchExpressions:
+  - key: size
+    operator: Exists
+```
+
+There are a number of other operators as well. You can refer to the [documentation](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/) for more details.
+
+What if no affinity could not match a node with a given expression?
+
+The type of node affinity defines the behavior of the scheduler with respect to node affinity and the stages in the life cycle of the pod. There are currently two types of node affinity available.
+
+- `requiredDuringSchedulingIgnoredDuringExecution`
+- `preferredDuringSchedulingIgnoredDuringExecution`
+
+There is also additional type of node affinity planned as follows.
+
+- `requiredDuringSchedulingRequiredDuringExecution`
+
+There are two states in the life cycle of a pod when considering node affinity, `DuringScheduling` and `DuringExecution`.
+
+**DuringScheduling :** is the state where a pod does not exist and is created for the first time. We have no doubt that when a pod is created, the affinity rules specified are considered to place the pod on the right node. 
+
+What if the node with matching labels are not available? For example, we forgot to label that node as Large. That is where the type if node affinity used comes into play.
+
+| |DuringScheduling|
+|-|----------------|
+|Type 1|Required|
+|Type 2|Preferred|
+
+If you select the required type, which is the first row, the scheduler will mandate that the pod be placed on a node with the given affinity rules.
+
+If it cannot the find one, the pod will not be scheduled, this type will be used in cases where the placement of the pod is crucial. If a matching node does not exist, the pod will not be scheduled. 
+
+But let's say the pod placement is less important than running the workload itself.
+
+In that case, we could set it to preferred and in cases where a matching node is not found, the scheduler will simply ignore no definitive rules and place the pod on any available node.
+
+Thus is a way of telling scheduler, ***try the best to place the pod on matching node, but if you really cannot find one, just place is anywhere.***
+
+**DuringExecution :** is the state where a pod has been running and a change is made in the environment that affects node affinity, such as a change in the label of a node.
+
+For example, an administrator removed the label we said earlier, `size=Large` from the node. What would happen to the pods that are running on the node?
+
+| |DuringExecution|
+|-|----------------|
+|Type 1|Ignored|
+|Type 2|Ignored|
+
+As we can see above, there are two types of node affinities available today and this value is set to ignore it. 
+
+This means that the pods will continue to run and any changes in node affinity will not affect them once they are scheduled.
