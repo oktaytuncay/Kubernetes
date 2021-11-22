@@ -1967,3 +1967,5 @@ For example, an administrator removed the label we said earlier, `size=Large` fr
 As we can see above, there are two types of node affinities available today and this value is set to ignore it. 
 
 This means that the pods will continue to run and any changes in node affinity will not affect them once they are scheduled.
+
+#### Taints & Tolerations vs Node Affinity
