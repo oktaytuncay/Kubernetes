@@ -1968,4 +1968,80 @@ As we can see above, there are two types of node affinities available today and 
 
 This means that the pods will continue to run and any changes in node affinity will not affect them once they are scheduled.
 
-#### Taints & Tolerations vs Node Affinity
+### Multi-Container PODs
+
+There are different patterns of Multi-Container pods in Kubernetes such as the Ambassador, Adapter and Sidecar.
+
+The idea of decoupling a large monolithic application into sub-components known as Microservice enables us to develop and deploy a set of independent small and reusable code.
+
+This architecture can then help us scale up, down as well as modify each service as required as opposed to modifying the entire application.
+
+However, sometimes we may need two services such as a web server and a logging service to work together. We need one agent instance per web server instance paired together that can scale up and down together.
+
+And that is why we have multi-container pods that share the same lifecycle which means they are created together and destroyed. They share the same network layer which means they can refer to each other as localhost and they have access to the same storage volumes.
+
+Thus way, we don't have to establish volume sharing or services between the pods to enable communication between them.
+
+To create a multi-container pod, add the new container of information to the pod definition file. 
+
+Remember the container section under the spec section in a pod definition file is an array and the reason it is array is to allow multiple containers in a single pod.
+
+In this case we add a new container named log-agent to our existing pod-definition file.
+
+```properties
+apiVersion: v1
+kind: Pod
+metadata:
+  name: simple-webapp-colur
+  labels:
+    name: simple webapp-color
+spec:
+  containers:
+  - name: simple-webapp-color
+    image: simple-webapp-color
+    ports:
+      - containerPort: 8080
+
+  - name: log-agent
+    image: log-agent
+```
+
+There are three common patterns when it comes to designing multi-container pods.
+
+The first is the Sidecar pattern in the logging service example above. The others are the Adapter and the Ambassador pattern.
+
+A good example of a Sidecar pattern is deploying a logging agent alongside a web server to collect logs and forward them to a central log server.
+
+Building on that example, say we have multiple applications generating logs in different formats. It will be hard to process the various formats on the central logging server. So before sending the logs to the central server, we would like to convert the logs to a common format.
+
+
+```sql
+- 17-Sep-2021 17:07:12 "GET /index1.html" 200
+
+- 17/Sep/2021:17:07:12 -800 "GET /index2.html" 200
+
+- GET 1621451764 "/index3.html" 200
+```
+
+For this, we deploy an Adapter container. The Adapter container processes the logs before sending it to the central server
+
+```sql
+- 17-Sep-2021 17:07:12 "GET /index1.html" 200 
+  -> 17-Sep-2021 17:07:12 "GET /index1.html" 200 
+
+- 17/Sep/2021:17:07:12 -800 "GET /index2.html" 200 
+  -> 17-Sep-2021 17:07:12 "GET /index2.html" 200 
+
+- GET 1621451764 "/index3.html" 200 
+  -> 17-Sep-2021 17:07:12 "GET /index3.html" 200 
+```
+
+So our application communicates to different database instances at different stages of development. Let's say we have Prod, Test ,and Dev databases.
+
+We should make sure to change this connectivity in our application code depending on the environment in which we are deploying our application.
+
+We may choose to outsource logic to a separate container within our pod. So that our application can always refer to a database at the localhost and the new container can proxy the request to the right database.
+
+This is knows as an Ambrassador container.
+
+These are different patterns in designing a multi-container pod. When it comes to implementing them using a pod definition file, It is always the same. We simply have multiple containers within the pod definition file.
