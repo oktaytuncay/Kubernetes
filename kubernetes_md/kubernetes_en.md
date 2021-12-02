@@ -2242,5 +2242,79 @@ If we run kubectl logs command with pod name, which container's logs will be sho
 If there are multiple containers within a pod, we must specify the name of the container explicitly in the command. Otherwise, It would fail asking you to specify a name. In this case, we need to specify the name of the container and that prints the relevant log messages.
 
 ```bash
-% kubectl logs -f myapp-pod nginx-container
+kubectl logs -f myapp-pod nginx-container
 ```
+
+This is how the simple logging functionality implemented with Kubernetes works
+
+#### Monitor and Debug Applications
+
+In Kubernetes, we can monitor performance metrics such as CPU, memory, network, and disk utilization, as well as node-level metrics such as the number of nodes in the cluster and how many are healthy.
+
+Pod-level metrics like the number of pods and performance metrics like CPU and memory consumption on each pod.
+
+So we need a solution that will monitor these metrics, store them and provide analytics around this data.
+
+Kubernetes does not come with a full feature built-in monitoring solution. But there are a number of open source solutions available like Metrics Server, Prometheus, Elastic Stack and Proprietary solutions like Datadog and Dynatrace.
+
+Heapster was one of the original projects that enabled monitoring and analysis features for Kubernetes. A lot of regerence can be found for reference architectures on monitoring Kubernetes. However, heapster is now deprecated and slimmed down version was formed known as the Metric Server.
+
+We can have one metric server per Kubernetes cluster. The Metrics Server retrieves metrics from each of the Kubernetes nodes and pods, aggregates them and store in memory. 
+
+Note that the metrics server is only an in-memory monitoring solution and does not store the metrics on the disk. And as a result we can't see historical performance data.
+
+So how to generate metrics for pods in these nodes?
+
+Kubernetes runs an agent on each node called kubelet which is responsible for receiving instructions from the Kubernetes API Master server and running pods on the nodes. 
+
+The kubelet also contains a subcomponent known as the cAdvisor or Container Advisor. cAdvisor is responsible for retrieving performance metrics from pods and exposing them through the kubelet API to meet the metrics available for the metrics server.
+
+If we are using minicube for the local cluster, the below command will enable the metric server.
+
+> minikube plugins metric-enable server
+
+For all other environments, the following command deploys the metric server by cloning the metric server deployment file from the GitHub repository.
+
+```bash
+% git clone https://github.com/kubernetes-sigs/metrics-server
+```
+
+Then deploying the required components using the kubectl apply command. This command deploys a set of pods, services and roles to enable the metric server to poll for performance metrics from the nodes in the cluster.
+
+```bash
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+```
+
+Verify that the metrics-server deployment is running the desired number of pods with the following command.
+
+```bash
+% kubectl get deployment metrics-server -n kube-system
+
+NAME             READY   UP-TO-DATE   AVAILABLE   AGE
+metrics-server   1/1     1            1           2m48s
+```
+
+A little while later, the metric server will collect and process data. After processing, cluster performance can be viewed by running the following command
+
+```bash
+% kubectl top node
+
+NAME          CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%   
+10.0.10.214   42m          1%     2142Mi          6%        
+10.0.10.25    27m          0%     2072Mi          6%        
+10.0.10.252   46m          1%     2108Mi          6% 
+```
+
+The above command provides the cpu and memory consumption of each of the nodes.
+
+The following command can be used to view performance metrics for pods in Kubernetes.
+
+```bash
+% kubectl top pod
+
+NAME                                CPU(cores)   MEMORY(bytes)   
+myapp-deployment-7df67f74c5-lnnzq   0m           4Mi             
+myapp-deployment-7df67f74c5-ndb8n   0m           3Mi             
+myapp-deployment-7df67f74c5-zdfgq   0m           3Mi             
+myapp-pod
+``` 
