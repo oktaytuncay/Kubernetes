@@ -1348,8 +1348,6 @@ paswrd
 Secrets encode data in base64 format. 
 Anyone with the base64 encoded secret can easily decode it. As such the secrets can be considered as not very safe.
 
-
-
 The concept of safety of the Secrets is a bit confusing in Kubernetes. The <a href="https://kubernetes.io/docs/concepts/configuration/secret/" target="_blank">**kubernetes documentation**</a> page and a lot of blogs out there refer to secrets as a **safer option** to store sensitive data. 
 
 They are safer than storing in plain text as they reduce the risk of accidentally exposing passwords and other sensitive data. 
@@ -2045,3 +2043,204 @@ We may choose to outsource logic to a separate container within our pod. So that
 This is knows as an Ambrassador container.
 
 These are different patterns in designing a multi-container pod. When it comes to implementing them using a pod definition file, It is always the same. We simply have multiple containers within the pod definition file.
+
+### Observability
+
+#### Readiness Probes
+
+A pod has a pod status and some conditions. The pod status tell us where the pod is in it's lifecycle. When a pod is first created, it is in a pending state. This is when the scheduler tries to figure out where to place the pod.
+
+If the scheduler can't find the node to place the pod, it remains in a pending state. To find out why it's stuck in a pending state, we can run `kubectl describe pod` command and it can tell us exactly why.
+
+Once the pod is scheduled, it goes into a `ContainerCreating` status where the images required for the application are pulled and the container starts.
+
+Once all the container in a pod starts, it goes into a `Running` state where it continues to be until the program completes successfully or is terminated.
+
+Conditions define pods status. It is an array of true or false values that tell is the state of the pod. When a pod is scheduled on a node, the `PodScheduled` condition is set to true. When the pod is `Initialized`, it's value is ste to true.
+
+We know that a pod has multiple containers. When all the containers in the pod are ready, the `ContainersReady` condition is set to True and finally the pod itself is considered to be `Ready` 
+
+- `PodScheduled` **<span style="color:green">True</span>** or <span style="color:red">False</span>
+- `Initialized` **<span style="color:green">True</span>** or <span style="color:red">False</span>
+- `ContainersReady` **<span style="color:green">True</span>**  or <span style="color:red">False</span>
+- `Ready` **<span style="color:green">True</span>**  or <span style="color:red">False</span>
+
+If we try to run an instance of an Jenkins server, we'll notice that it takes about 10 to 15 seconds for the server to initialize before a user can access the WebUI.
+
+Even after the WebUI is initialized, it takes a few seconds for the server to warm-up and be ready to serve users. During this wait period, if we look at the state of the pod, it continues to indicate that the pod is ready which is not true. 
+
+So, how does Kubernetes know whether the application inside the container is actually running or not. And why does it matter if the state is reported correctly?
+
+Let's look at a simple scenario where we create a pod and expose it to external users using a service. The service will route traffic to the pod immediately.
+
+The service relies on the pods ready condition to route traffic. By default, Kubernetes assumes that as soon as the container is created, it is ready to serve user traffic. So, it sets the value of the ready condition for each container to True.
+
+But if the application within the container took longer to get ready the service is unaware of it and sends traffic through as the container is already in a ready state causing users to hit a pod that is not yet running a live application.
+
+What we need here is a way to tie the ready condition to the actual state of the application inside the container. As a developer of the application, we know better what it means for the application to be ready.
+
+![pic17](images/17.png)
+
+There are different ways that we can define if an application inside a container is actually ready. We can setup different kinds of HTTP tests to see if the API server response.
+
+In case of a database, we may set to see if a particular TCP socket is listening or we may simply execute a command within the container to run a custom script that will exit successfully if the application is ready.
+
+In the pod definition file, we can add a new field called `readinessProbe`, use the `httpGet` option and specify the port and the ready API.
+
+```properties
+apiVersion: v1
+kind: Pod
+metadata:
+  name: simple-webapp-colur
+  labels:
+    name: simple webapp-color
+spec:
+  containers:
+  - name: simple-webapp-color
+    image: simple-webapp-color
+    ports:
+      - containerPort: 8080
+    readinessProbe:
+      httpGet:
+        path: /api/ready
+        port: 8080
+```
+
+After this definition, when the container is created, Kubernetes does not immediately set the ready condition on the container to True.
+
+Instead, it performs a test to see if the API responds positively. Until then the service does not forward any traffic to the pod as it sees that the pod is not ready.
+
+There are different ways a probe can be configured.
+
+|Usage|Option|
+|-----|------|
+|HTTP|httpGet with path and the port|
+|TCP|tcpSocket with the port|
+|Executing Command| exec with the command and options in an array format|
+
+```properties
+readinessProbe:
+  httpGet:
+    path: /api/ready
+    port: 8080
+
+readinessProbe:
+  tcpSocket:
+    port: 1521
+
+readinessProbe:
+  exec:
+    command:
+      - cat
+      - /app/is_Ready
+```
+
+If we know that our application will take a minimum of say 10 seconds to warm up, we can add an additional delay to the probe. If we would like to specify how often to probe, we can do that using the period seconds option.
+
+By default, if the application is not ready after three attempts, the probe will stop. If we would like to make more attempts, we can use the `failureThreshold` option.
+
+```properties
+readinessProbe:
+  httpGet:
+    path: /api/ready
+    port: 8080
+
+  initialDelaySeconds: 10
+
+  periodSeconds: 5
+
+  failureThreshold: 8
+```
+
+Finally, let us look at how readiness probes are useful in a multi-pod setup. Say we have a replica set or deployment with multiple pods and a service serving traffic to all the pods.
+
+There are two pods already serving users say we want to add an additional pod and let's say the pod takes a minute to warm up.
+
+Without the readiness probe configured correctly, the service would immediately start routing traffic to the new pod and that will result in service disruption to at least some of the users.
+
+Instead, if the pods were configured with the correct readiness probe, the service will continue to serve traffic only to the older pods and wait until the new pod is ready.
+
+Once ready, the traffic will be routed to the new pod as well, ensuring no users are affected.
+
+#### Liveness Probes
+
+Let's say we run an nginx image on Docker and it starts to server users but for some reason, WebServer crashes and the ngix process and the container exits.
+
+We noticed that when we run the `docker ps -a` command, the status is `Exit (1) 17 seconds ago`.
+
+Since docker is not an orchestration engine, the container continues to stay dead and it will continue to deny requests until we manually create a new container.
+
+When we run the same Web Application with Kubernetes, when the application crashes, Kubernetes tries to restart the container to restore the service to the users.
+
+We can see the count of restarts increase in the output of `kubectl get pods` command.
+
+However, what if the application is not really working but the container continues to stay alive? 
+
+Say, for instance, due to a bug in the code, the application is stuck in an infinite loop. According to Kubernetes, the container runs and therefore assumes the application is up however, users who reach the container cannot use the service.
+
+In that case, the container needs to be restarted or destroyed and a new container is to be brought up. That is where the liveness probe can help us.
+
+Liveness probe can be configured on the container to periodically test whether the application within the container is actually healthy.
+
+If the test fails, the container is considered unhealthy and is destroyed and created.
+
+For a Web application, it could be when the API server is up and running, or for a database, we may test to see if a particular TCP socket is listening or we may simply execute a command to perform a test.
+
+The liveness probe is configured in the definition file, as we did with the readiness probe. The difference is to user liveness instead of readiness.
+
+```properties
+livenessProbe:
+  httpGet:
+    path: /api/ready
+    port: 8080
+```
+
+Similar to readiness probe, we have httpGet option for APIs, tcpSocket for port and exec for commands and as well as additional options like `initialDelaySeconds` before the test is run, `periodSeconds` to define the frequency and `failureThreshold`
+
+#### Container Logging
+
+Let's start with logging in Docker. When we run `docker runcodes/event-simulator` in Docker, it generates random event simulating a web server. These are events streamed to the standard output by the application. 
+
+If we were to run the same command in a detached mode using `-d` option, we would not see the logs. If we wanted to view the logs, we can use the docker logs command followed by the container id. The `-f` option helps us see the live log trail.
+
+> docker logs -f <cont_id>
+
+We can create pod with the same docker image using the pod definition file.
+
+```properties
+apiVersion: v1
+kind: Pod
+metadata:
+  name: event-simulator-pod
+spec:
+  containers:
+  - name: event-simulator
+    image: runcodes/event-simulator
+```
+
+Once the pod is running, we can view the logs using `kubectl logs -f event-simulator-pod`. `-f` option is for to stream the logs flow just like the Docker command.
+
+```bash
+% kubectl logs -f myapp-pod
+/docker-entrypoint.sh: Configuration complete; ready for start up
+2021/12/02 10:15:41 [notice] 1#1: using the "epoll" event method
+2021/12/02 10:15:41 [notice] 1#1: nginx/1.21.4
+2021/12/02 10:15:41 [notice] 1#1: built by gcc 10.2.1 20210110 (Debian 10.2.1-6) 
+2021/12/02 10:15:41 [notice] 1#1: OS: Linux 5.4.17-2102.205.7.3.el7uek.x86_64
+2021/12/02 10:15:41 [notice] 1#1: getrlimit(RLIMIT_NOFILE): 1048576:1048576
+2021/12/02 10:15:41 [notice] 1#1: start worker processes
+2021/12/02 10:15:41 [notice] 1#1: start worker process 31
+2021/12/02 10:15:41 [notice] 1#1: start worker process 32
+2021/12/02 10:15:41 [notice] 1#1: start worker process 33
+2021/12/02 10:15:41 [notice] 1#1: start worker process 34
+```
+
+Kubernetes pods can have multiple docker containers in them. In this case, we can modify the pod definition file to include an additional container. 
+
+If we run kubectl logs command with pod name, which container's logs will be shown? 
+
+If there are multiple containers within a pod, we must specify the name of the container explicitly in the command. Otherwise, It would fail asking you to specify a name. In this case, we need to specify the name of the container and that prints the relevant log messages.
+
+```bash
+% kubectl logs -f myapp-pod nginx-container
+```
