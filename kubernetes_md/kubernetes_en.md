@@ -2317,4 +2317,122 @@ myapp-deployment-7df67f74c5-lnnzq   0m           4Mi
 myapp-deployment-7df67f74c5-ndb8n   0m           3Mi             
 myapp-deployment-7df67f74c5-zdfgq   0m           3Mi             
 myapp-pod
-``` 
+```
+
+#### Labels, Selectors and Annotations
+
+Let's say we have a large number of different types and want to filter them by their class, type, or even multiple criteria.
+Whatever that classification is, maybe we need the ability to group elements together and filter them according to our needs. And the best way to do that is with labels. And the best way to do that is with labels.
+
+Labels are properties attached to each item. So we add properties to each item for their class, kind, and color. Selectors help us filter these items. For example, when we say `class=bird`, we get a list of birds. And when we say `color=green`, we get the green birds.
+
+We can see labels and selectors used everywhere such as the keywords we tah to YouTube videos or blogs that help us filter and the right content.
+
+So how are labels and selectors used in Kubernetes?
+We can create a lot of different types of objects in Kubernetes including pods, services, replica sets, deployments, etc.
+
+Over time we may end up having hundreds or thousand of these objects in our cluster. Then we'll need a way to filter and view different objects by different categories. For instance, group objects by their type, view objects by application or by their functionality.
+
+Regardless, we can group and select objects using labels and selectors. For each object, attach labels as per our needs like app, function and more.
+
+Then while selecting specify a condition to filter specific objects for example `app=Prod`.
+So how exactly do we specify labels in Kubernetes? 
+In a pod definition file, under metadata, we need to create a section called labels. Below that we can add labels in a key-value format like below.
+ 
+```properties
+apiVersion: v1
+kind: Pod
+metadata:
+  name: simple-webapp
+  labels:
+    app: Prod
+    function: front-end
+spec:
+  containers:
+  - name: simple-webapp
+    image: simple-webapp
+    ports:
+      - containerPort: 8080
+```
+
+We can add as many labels as we like. 
+Once the pod is created we can use the following command to select the labelled pod.
+
+```bash
+kubectl get pods --selector app=Prod
+```
+
+Kubernetes objects use labels and selectors internally to connect different objects together. For instance, to create a replica set of three different pods, we first label the pod definition and use a selector on a replica set to group the pods. In a replica set definition file, we see labels defined in two places.
+
+```properties
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: simple-webapp
+  labels: 
+    app: Prod
+    function: front-end
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: Prod <-----
+  template:
+    metadata:
+      labels:
+        app: Prod <-----
+        function: front-end
+    spec:
+      containers:
+      - name: simple-webapp
+        image: simple-webapp
+```
+
+The labels on the ReplicaSet will be used if we were to configure some other object to discover the ReplicaSet.
+
+In order to connect the ReplicaSet to the pod, we configure the selector field labels defined on the pod and make sure that these labels match the template section correctly.
+
+However, if there may be other pods with the same label and different functions, we can specify both labels to ensure that the correct pods are discovered by ReplicaSet.
+
+On creation if the labels match the replicas that is created successfully. It works the same for other obkects like a service.
+
+When a service is created it uses the selector defined in the service definition file to match the labels set on the pods in the replicaset definition file.
+
+```properties
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-service
+spec:
+  selector: 
+    app: Prod <-----
+  ports:
+  - protocol: TCP
+    port: 8080
+    targetPort: 9376
+```
+
+```properties
+    metadata:
+      labels:
+        app: Prod <-----
+        function: front-end
+```
+
+##### Annotations
+
+While labels and selectors are used to group and select objects, annotations are used to record other details for informatory purposes.
+
+For example, tool details like name, version, build, information, etc. Or contact details like phone numbers, email, id, etc. In a word, annotations may be used for some kind of integration purpose.
+
+```properties
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: simple-webapp
+  labels: 
+    app: Prod
+    function: front-end
+  annotations:
+      buildversion: 1.17
+```
