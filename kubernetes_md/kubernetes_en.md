@@ -2513,3 +2513,123 @@ kubectl rollout undo deployment/myapp-deployment
 ```
 
 The deployment will then destroy the pods in the new replica set and bring the older version up. And our application is back to it's older format.
+
+###### Creating a deployment and checking the rollout status and history
+
+```bash
+% kubectl create deployment nginx --image=nginx:1.16
+deployment.apps/nginx created
+
+% kubectl rollout status deployment nginx
+deployment "nginx" successfully rolled out
+
+% kubectl rollout history deployment nginx
+
+deployment.apps/nginx 
+REVISION  CHANGE-CAUSE
+1         <none>
+```
+
+To check for revision 1, the first version the deployment was created
+
+```bash
+% kubectl rollout history deployment nginx --revision=1
+
+deployment.apps/nginx with revision #1
+Pod Template:
+  Labels:	app=nginx
+	pod-template-hash=6d4cf56db6
+  Containers:
+   nginx:
+    Image:	nginx:1.16
+    Port:	<none>
+    Host Port:	<none>
+    Environment:	<none>
+    Mounts:	<none>
+  Volumes:	<none>
+```
+
+When looking at the deployment history, there was no information on `CHANGE-CAUSE` field. We can use the `--record` flag to save the command used to create/update a deployment against the revision number.
+
+```bash
+% kubectl set image deployment nginx nginx=nginx:1.17 --record
+deployment.apps/nginx image updated
+
+% kubectl rollout history deployment nginx
+deployment.apps/nginx 
+REVISION  CHANGE-CAUSE
+1         <none>
+2         kubectl set image deployment nginx nginx=nginx:1.17 --record=true
+```
+
+We can now see that the change-cause is recorded for the revision 2 of this deployment.
+
+Let's make some more changes. In the example below, we are editing the deployment and changing the image from nginx:1.17 to latest version of nginx (nginx"latest) while making use of the `--record` flag.
+
+```bash
+% kubectl edit deployments nginx --record 
+deployment.apps/nginx edited
+
+% kubectl rollout history deployment nginx
+deployment.apps/nginx 
+
+REVISION  CHANGE-CAUSE
+1         <none>
+2         kubectl set image deployment nginx nginx=nginx:1.17 --record=true
+3         kubectl edit deployments nginx --record=true
+```
+
+To check for revision 3, the latest version the deployment was created
+
+```bash
+% kubectl rollout history deployment --revision=3
+deployment.apps/nginx with revision #3
+Pod Template:
+  Labels:	app=nginx
+	pod-template-hash=bb957bbb5
+  Annotations:	kubernetes.io/change-cause: kubectl edit deployments nginx --record=true
+  Containers:
+   nginx:
+    Image:	nginx:latest
+    Port:	<none>
+    Host Port:	<none>
+    Environment:	<none>
+    Mounts:	<none>
+  Volumes:	<none>
+```
+
+**To rollback to previous version:**
+
+```bash
+% kubectl rollout undo deployment nginx
+deployment.apps/nginx rolled back
+
+% kubectl rollout history deployment nginx       
+deployment.apps/nginx 
+REVISION  CHANGE-CAUSE
+1         <none>
+3         kubectl edit deployments nginx --record=true
+4         kubectl set image deployment nginx nginx=nginx:1.17 --record=true
+
+
+% kubectl rollout history deployment --revision=4
+
+deployment.apps/nginx with revision #4
+Pod Template:
+  Labels:	app=nginx
+	pod-template-hash=db749865c
+  Annotations:	kubernetes.io/change-cause: kubectl set image deployment nginx nginx=nginx:1.17 --record=true
+  Containers:
+   nginx:
+    Image:	nginx:1.17
+    Port:	<none>
+    Host Port:	<none>
+    Environment:	<none>
+    Mounts:	<none>
+  Volumes:	<none>
+
+
+% kubectl describe deployments nginx | grep -i image: 
+    Image:        nginx:1.17
+```
+
