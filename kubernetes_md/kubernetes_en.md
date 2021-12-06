@@ -2436,3 +2436,80 @@ metadata:
   annotations:
       buildversion: 1.17
 ```
+
+#### Rolling Updates & Rollbacks in Deployments
+
+##### Rollout and Versioning
+
+When we first create a deployment, it triggers a rollout. A new rollour creates a new deployment revision, let's call it revision one.
+
+In the future, when the application is upgraded, meaning when the contianer version is updated to a new one, a new rollout is triggered and a new deployment revision is created named revision to. This helps us keep track of the changes made to our deployment and enables us to roll back to a previous version of deployment if necessary.
+
+We can see the status of our rollout by running the following command.
+
+```bash
+% kubectl rollout status deployment/myapp-deployment
+```
+
+We can see the revisions and history of our deployment by running the following command.
+
+```bash
+% kubectl rollout history deployment/myapp-deployment
+deployment.apps/myapp-deployment 
+
+REVISION  CHANGE-CAUSE
+0         <none>
+1         <none>
+```
+
+There are two types of deployment strategies. 
+
+![pic18](images/18.png)
+
+For example, we have five replicas of our Web application instance deployed. One way to upgrade these to a newer version is to destory all of these and then create newer versions of applications instances, meaning first destroy the five running instances and then deploy five new instances of the new application version.
+
+The problem with this, as you can imagine, is that during the period oafter the older versions are down and before any newer version is up, the application is down and inaccessible to users.
+
+This strategy is known as the `recreate` strategy and this is not the default deployment strategy.
+
+![pic19](images/19.png)
+
+The second strategy is where we did not destroy all of them at once. Instead we take down the older version and bring up newer version, one by one. This way, the application never goes down and the upgrade is seamless. The name of this strategy is the `Rolling Update` strategy.
+
+If we don't specify a strategy while creating a deployment, it'll assume it to be rolling update. In other words, rolling update is the default deployment strategy.
+
+So how is the upgrade process done?
+After making the necessary changes in the definition file, we run the following command.
+
+```bash
+kubectl apply -f deployment-definition.yml
+```
+
+A new rollout is truggered and a new version of of the deployment is created. But there is another way to do the same thing, We can update the image of our application by using the `set image` command as follows.
+
+```bash
+kubectl set image deployment/myapp-deployment \
+  nginx=nginx:1.9.1
+```
+
+However, it is important to keep in mind that doing this will cause the deployment definition file to have a different configuration. So we must be careful when using the same definition file to make changes in the future.
+
+##### Upgrades
+
+![pic20](images/20.png)
+
+When a new deployment is created, it first creates a replica set automatically, which in turn creates the number of pods required to meet the number of replicas. When we upgrade our application, the Kubernetes deployment object creates a new replica set under the hood and starts deploying the containers there. at the same time taking down the pods in the old replica set following a rolling update strategy.
+
+This can be seen when we try to list the replica sets using `kubectl get replicasets` command. 
+
+##### Rollback
+
+Say, for instance, once we upgrade our application, we realize something wrong with the new version of the application. Wo we would like to rollback application.
+
+Kubernetes deployment allow us to rollback to previous version. To undo a change, we can run the following command.
+
+```bash
+kubectl rollout undo deployment/myapp-deployment
+```
+
+The deployment will then destroy the pods in the new replica set and bring the older version up. And our application is back to it's older format.
