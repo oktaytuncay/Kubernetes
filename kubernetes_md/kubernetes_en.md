@@ -2633,3 +2633,220 @@ Pod Template:
     Image:        nginx:1.17
 ```
 
+#### Wrap-Up
+
+1. Check if anything exists in the cluster
+
+```bash
+% kubectl get all 
+NAME                 TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)   AGE
+service/kubernetes   ClusterIP   10.96.0.1    <none>        443/TCP   46d
+```
+
+There is nothing except for the default Kubernetes service.
+
+2. Create a new deployment 
+
+```properties
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp-deployment
+  labels: 
+    app: myapp
+    type: front-end
+spec:
+  template:
+    metadata:
+      name: myapp-pod
+      labels:
+        app: myapp
+        type: front-end    
+    spec:
+      containers:
+      - name: nginx-container
+        image: nginx
+  replicas: 3
+  selector:
+    matchLabels:
+      type: front-end
+```
+
+```bash
+% kubectl get all 
+NAME                 TYPE        CLUSTER-IP   EXTERNAL-IP   PORT(S)   AGE
+service/kubernetes   ClusterIP   10.96.0.1    <none>        443/TCP   46d
+```
+
+```bash
+% kubectl create -f deployment-definition.yml 
+deployment.apps/myapp-deployment created
+```
+
+3. Check the status of the deployment
+
+```bash
+% kubectl rollout status deployment myapp-deployment
+deployment "myapp-deployment" successfully rolled out
+```
+
+All new deployments creates a new rollout and a rollout is the process of deploying the containers in the backend. Whenever a new rollout is creayed, a new deployment revision is created.
+
+4. Check the rollout history of the deployment
+
+```bash
+% kubectl rollout history deployment myapp-deployment
+
+deployment.apps/myapp-deployment 
+REVISION  CHANGE-CAUSE
+1         <none>
+```
+
+5. Delete the deployment, recreate with the `--record` flag and check the history.
+
+```bash
+% kubectl delete deployment myapp-deployment
+
+% kubectl create -f deployment-definition.yml --record
+
+% kubectl rollout history deployment myapp-deployment
+
+deployment.apps/myapp-deployment 
+REVISION  CHANGE-CAUSE
+1         kubectl create --filename=deployment-definition.yml --record=true
+```
+
+6. Change the nginx version in the deployment-definition.yml file, apply the changes, check the image, check events and check the history.
+  - **Before :** *image: nginx*
+  - **After :** *image: nginx:1.20* 
+
+```bash
+% kubectl apply -f deployment-definition.yml --record
+Warning: resource deployments/myapp-deployment is missing the kubectl.kubernetes.io/last-applied-configuration annotation which is required by kubectl apply. kubectl apply should only be used on resources created declaratively by either kubectl create --save-config or kubectl apply. The missing annotation will be patched automatically.
+deployment.apps/myapp-deployment configured
+
+% kubectl describe deployments myapp-deployment | grep Image
+    Image:        nginx:1.20
+
+% kubectl describe deployments myapp-deployment | tail -10
+Events:
+  Type    Reason             Age    From                   Message
+  ----    ------             ----   ----                   -------
+  Normal  ScalingReplicaSet  14m    deployment-controller  Scaled up replica set myapp-deployment-7df67f74c5 to 3
+  Normal  ScalingReplicaSet  4m10s  deployment-controller  Scaled up replica set myapp-deployment-79896f8f68 to 1
+  Normal  ScalingReplicaSet  4m3s   deployment-controller  Scaled down replica set myapp-deployment-7df67f74c5 to 2
+  Normal  ScalingReplicaSet  4m3s   deployment-controller  Scaled up replica set myapp-deployment-79896f8f68 to 2
+  Normal  ScalingReplicaSet  3m55s  deployment-controller  Scaled down replica set myapp-deployment-7df67f74c5 to 1
+  Normal  ScalingReplicaSet  3m55s  deployment-controller  Scaled up replica set myapp-deployment-79896f8f68 to 3
+  Normal  ScalingReplicaSet  3m47s  deployment-controller  Scaled down replica set myapp-deployment-7df67f74c5 to 0
+```
+
+If we look at the flow of the events above, we can see the events that have happened in the background.
+
+We can see that there are two separate replicas mentioned here, one of which is older (in our case it's the opposite but we ignore it) and is scaled down one by one. And at the same time, a new version of replicas with the new version (nginx:1.20) we want is scaled-up one by one.
+
+```bash
+% kubectl rollout history deployment myapp-deployment
+deployment.apps/myapp-deployment 
+REVISION  CHANGE-CAUSE
+1         kubectl create --filename=deployment-definition.yml --record=true
+2         kubectl apply --filename=deployment-definition.yml --record=true
+```
+
+7. Change the image version with the `set image` command, upgrade the nginx container to 1.20-perl which is another version of the nginx container, check the history and check the version of image.
+
+
+```bash
+% kubectl set image deployment myapp-deployment nginx-container=nginx:1.20-perl --record
+deployment.apps/myapp-deployment image updated
+
+% kubectl rollout history deployment myapp-deployment
+deployment.apps/myapp-deployment 
+REVISION  CHANGE-CAUSE
+1         kubectl create --filename=deployment-definition.yml --record=true
+2         kubectl apply --filename=deployment-definition.yml --record=true
+3         kubectl set image deployment myapp-deployment nginx-container=nginx:1.20-perl --record=true
+
+% kubectl describe deployments | grep Image                            
+    Image:        nginx:1.20-perl
+```
+
+Let's assume there is a problem with the last change. 
+
+8. Rollback last change that we made, check the history and check the version of image.
+
+```bash
+% kubectl rollout undo deployment myapp-deployment
+deployment.apps/myapp-deployment rolled back
+
+% kubectl rollout history deployment myapp-deployment
+deployment.apps/myapp-deployment 
+REVISION  CHANGE-CAUSE
+1         kubectl create --filename=deployment-definition.yml --record=true
+3         kubectl set image deployment myapp-deployment nginx-container=nginx:1.20-perl --record=true
+4         kubectl create --filename=deployment-definition.yml --record=true
+
+% kubectl describe deployments | grep Image
+    Image:        nginx:1.20
+```
+
+We see a new revision with revision number 4 as seen above, and we can no longer see revision number 2 and revision 4 has the same content as revision 2. The last revision before this step was 3, we rollback 3, made 2 the current revision, it became the current revision with number 4.
+
+9. Change/break the nginx version in the deployment-definition.yml file, apply the changes and check the rollout status.
+  - **Before :** *image: nginx:1.20*
+  - **After :** *image: nginx:invalid_version* 
+
+```bash
+% kubectl apply --filename=deployment-definition.yml --record=true
+deployment.apps/myapp-deployment configured
+
+% kubectl rollout status deployment myapp-deployment
+Waiting for deployment "myapp-deployment" rollout to finish: 1 out of 3 new replicas have been updated...
+```
+
+When we check the status of rollout, we see that it's actually stuck at that point where it says one out of three new applications has been updated.
+
+So we know that at this point in the backend, it's actually trying to bring down the old replicas and bring up new replicas. But it's a
+
+When we check the number of pods in the deployment, we can see that the number of ready, up-to-date and available pods, which should be 3, is 2.
+
+```bash
+% kubectl get deployment myapp-deployment
+NAME               READY   UP-TO-DATE   AVAILABLE   AGE
+myapp-deployment   2/3     2            2           14h
+```
+
+But the recent change that we made is to update to an image that is not actually available, so we run the `kubectl get pods` to see the status pods, we'll notice that two of the old versions which are the actual working versions are running. The new version, which is not actually available, gives an error.
+
+```bash
+% kubectl get pods
+NAME                                READY   STATUS             RESTARTS   AGE
+myapp-deployment-794c669469-cvw7b   0/1     ImagePullBackOff   0          28m
+myapp-deployment-794c669469-drhsj   0/1     ImagePullBackOff   0          16m
+myapp-deployment-79896f8f68-859nw   1/1     Running            0          10h
+myapp-deployment-79896f8f68-ql2rz   1/1     Running            0          10h
+```
+
+So what's happened here is, as always, this is considered to be an upgrade and the deployment object tried to terminate one instance from the old working versions, so thereby bringing the total number of running pods to two and it tried to create two pods of the new version. 
+
+However, the new version is not right and that's why we can see that the status of image is `ImagePullBackOff` that basically means that the deployment is unable to pull the image from Docker hub. 
+
+And because it couldn't deploy either of the two pods, Kubernetes stopped proactively continuing the upgrade and stopped terminating the old replica set because if it terminated the entire old replica set, the new image would be unhealthy so the user would be affected. So it proactively stop the upgrade and it's now waiting for the new image to be available.
+
+We know that there is an error with the image that we are trying to download, so we are going to undo that recent change by running the following command.
+
+```bash
+% kubectl rollout undo deployment myapp-deployment
+deployment.apps/myapp-deployment rolled back
+```
+
+If we check the status of the pods and the image, we can see that it has been fixed.
+
+```bash
+% kubectl describe deployment myapp-deployment | grep Image
+    Image:        nginx:1.20
+
+oktaytuncay@oktaytuncay-mac pod % kubectl get deployment myapp-deployment            
+NAME               READY   UP-TO-DATE   AVAILABLE   AGE
+myapp-deployment   3/3     3            3           14h
+```
