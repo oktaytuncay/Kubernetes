@@ -2850,3 +2850,50 @@ oktaytuncay@oktaytuncay-mac pod % kubectl get deployment myapp-deployment
 NAME               READY   UP-TO-DATE   AVAILABLE   AGE
 myapp-deployment   3/3     3            3           14h
 ```
+
+#### Jobs
+
+There are different types of workloads that a container can serve. For example, performing a computation, processing an image, performing some kind of analytics on a large data set, generating a report and sending email, etc. These are workloads that are meant to live for a short period of time.
+
+Let's first see how such a workload works in docker and then relate the same concept to Kubernetes.
+
+The following command can be used for a simple math operation to add two numbers.
+
+> docker run ubuntu expr 3 + 2
+
+The docker container comes up performs the requested operation prints the output and exits. When we run the `docker ps` command. we see the container in and exited state. The return code of the operation performed is shown in the bracket as well. In this case, since the task was completed successfully the return code ise zero.
+
+Let's just replicate the same with Kubernetes. We'll create a pod definition file to perform the same operation.
+
+```properties
+apiVersion: v1
+kind: Pod
+metadata:
+  name: math-pod
+spec:
+  containers:
+    - name: math-pod
+      image: ubuntu
+      command: ['expr', '3', '+', '2']
+```
+
+When the pod is created, it runs the container performs the computation task and exist and the pod goes into a completed state. 
+
+```bash
+% kubectl get pods math-pod
+NAME       READY   STATUS      RESTARTS   AGE
+math-pod   0/1     Completed   5          3m22s
+```
+
+But it then recreates the container in an attempt to leave it running. Again the container performs the required competition task and exist and Kubernetes continues to bring it up again. And this continues to happen until threshold is reached. So why does that happen?
+
+Kubernetes wants our application to live forever. The default behavior of pods is to attempt to restart the container in an effort to keep it running. 
+
+This behavior is defined by the property restart policy set on the pod which is by default set to always and that is why the pod always recreates the container when it exits. We can override this behavior by setting this property to never or on failure. That way Kubernetes does not restart the container once the job is finished.
+
+We have new use cases for batch processing. We have large data sets that require multiple pods to process the data in parallel. We want to make sure that all pods perform the task assigned to them successfully and then exit.
+
+
+
+
+
