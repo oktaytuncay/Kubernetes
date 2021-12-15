@@ -3002,3 +3002,46 @@ spec:
 ```
 
 We set it to 3 to create three pods in parallel. So the job first creates three pods at once. If, as in the previous example, the desired number of healthy pods cannot be reached in the first three attempts, the steps of creating pods one by one will continue from here on, and this will continue until the desired number of 3 is reached.
+
+##### CronJobs
+
+A CronJob is a job that can be scheduled just like crontab in Linux. Say for example we have a job that generates a report and sends an email.
+The schedule option takes a cron-like format string where we can specify the time when the job is to be run.
+
+![pic21](images/21.png)
+
+In such a case, the definition file will look like the one below. 
+
+```properties
+apiVersion: batch/v1beta1
+kind: CronJob
+metadata:
+  name: reporting-cron-job
+spec:
+  schedule: "*/1 * * * *"
+  jobTemplate:
+    spec:
+      completions: 3
+      parallelism: 3
+      template:
+        spec:
+          containers:
+            - name: math-pod
+              image: ubuntu
+      
+          restartPolicy: Never
+```
+
+There are now 3 spec sections one for the cron-job, one for the job and one for the pod. Once the file is ready we can run the create command below to create a cron-job.
+
+```bash
+% kubectl create -f cron-job-definition.yaml
+cronjob.batch/reporting-cron-job created
+```
+
+```bash
+% kubectl get cronjob
+NAME                 SCHEDULE      SUSPEND   ACTIVE   LAST SCHEDULE   AGE
+reporting-cron-job   */1 * * * *   False     1        6s              14s
+```
+
