@@ -2891,9 +2891,114 @@ Kubernetes wants our application to live forever. The default behavior of pods i
 
 This behavior is defined by the property restart policy set on the pod which is by default set to always and that is why the pod always recreates the container when it exits. We can override this behavior by setting this property to never or on failure. That way Kubernetes does not restart the container once the job is finished.
 
-We have new use cases for batch processing. We have large data sets that require multiple pods to process the data in parallel. We want to make sure that all pods perform the task assigned to them successfully and then exit.
+We have new use cases for batch processing. We have large data sets that require multiple pods to process the data in parallel. We want to make sure that all pods perform the task assigned to them successfully and then exit. So we need a manager that can create as many pods as we want to get work done and ensure that work gets done successfully.
+
+But we have learned about ReplicaSets that help us create multiple pods. While a ReplicaSet is used to make sure a specified number of pods are runnning at all times. A job us used to run a set of pods to perform a given task to completion. 
+
+Now let's see how we can create a job. We create a job using a definition file and we started this with a pod definition file as above. To create a job using this, we can use a yaml file like below. Thr template section is the same as the spec section in the pod-definition file we used above. We just added the `restartPolicy` parameter additionally.
+
+```properties
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: math-add-job
+spec:
+  template:
+    spec:
+      containers:
+        - name: math-pod
+          image: ubuntu
+          command: ['expr', '3', '+', '2']
+      
+      restartPolicy: Never
+```
+
+Once done, we can create the job using the following command.
+
+> kubectl create -f job-definition.yaml 
+
+Once created, we can use the following command to see the newly created job. We now see that the jobs was created and was completed successfully.
+
+```bash
+% kubectl get jobs
+NAME           COMPLETIONS   DURATION   AGE
+math-add-job   1/1           9s         99s
+```
+
+We can check the status of the pod created with the following command and check the RESTARTS column to confirm that Kubernetes did not restart the pod.
+
+```bash
+% kubectl get pods           
+NAME                                READY   STATUS      RESTARTS   AGE
+math-add-job-8k2x7                  0/1     Completed   0          5m51s
+```
+
+But what about the output of the job. The output of a container can be viewed using the logs command.
+
+```bash
+% kubectl logs math-add-job-8k2x7
+5
+```
+
+To delete the job and the pod inside, we can use the delete command.
+
+```bash
+% kubectl delete job math-add-job
+job.batch "math-add-job" deleted
+```
+
+As an example of real-world scenarios, if the job was created to process an image, the processed image stored in a persistent volume would be the output, or if the job was to generate an email report, the email containing the report would be the result of the job.
+
+We just run one instance of the pod in the previous example. To run multiple pods, we set a value for `completions` under the job specification and we set it to 3 to run 3 pods. 
+
+```properties
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: math-add-job
+spec:
+  completions: 3
+
+  template:
+    spec:
+      containers:
+        - name: math-pod
+          image: ubuntu
+          command: ['expr', '3', '+', '2']
+      
+      restartPolicy: Never
+```
+
+This time when we created the job we see the completions count is 3 and successful count is also 3. By default the pods are created one after the other. The second pod is created only after the first is finished.
 
 
+```bash
+% kubectl get jobs
+NAME           COMPLETIONS   DURATION   AGE
+math-add-job   3/3           2m9s       2m59s
 
+% kubectl get pods
+NAME                                READY   STATUS      RESTARTS   AGE
+math-add-job-2hv2s                  0/1     Completed   0          95s
+math-add-job-hhln7                  0/1     Completed   0          2m38s
+math-add-job-v88km                  0/1     Completed   0          2m41s
+```
 
+What if the pods failed? If we had a docker image that either successfully completed or got an error at random, and we were to create a job with that image. 
 
+This job will be successful once and will get an error on the second attempt after it. So a third one is created and that completes successfully and the fourth one fails and so does the fifth and so we have 3 completions.
+
+The job tries to create new pods until it has three successful completions and that completes the job.
+
+Instead of getting the pods created sequentially, we can get tehm created in parallel. For this, we can add a property called `parallelism` to the job specification.
+
+```properties
+...
+spec:
+  completions: 3
+  parallelism: 3
+  template:
+...
+```
+
+We set it to 3 to create three pods in parallel. So the job first creates three pods at once. If, as in the previous example, the desired number of healthy pods cannot be reached in the first three attempts, the steps of creating pods one by one will continue from here on, and this will continue until the desired number of 3 is reached.
