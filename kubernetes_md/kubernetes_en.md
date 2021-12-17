@@ -3045,3 +3045,134 @@ NAME                 SCHEDULE      SUSPEND   ACTIVE   LAST SCHEDULE   AGE
 reporting-cron-job   */1 * * * *   False     1        6s              14s
 ```
 
+To delete all pods created with cron-job.
+
+```bash
+% kubectl get pods -n default --no-headers=true | awk '/reporting-cron-job/{print $1}'| xargs  kubectl delete -n default pod
+pod "reporting-cron-job-1639577640-78pt8" deleted
+pod "reporting-cron-job-1639577640-lk68d" deleted
+pod "reporting-cron-job-1639577640-vz977" deleted
+pod "reporting-cron-job-1639577760-jrhgf" deleted
+pod "reporting-cron-job-1639577760-ndrl8" deleted
+pod "reporting-cron-job-1639577760-pk6jw" deleted
+pod "reporting-cron-job-1639577820-7nxv2" deleted
+pod "reporting-cron-job-1639577820-lntjp" deleted
+...
+```
+
+### Services & Networking
+
+Kubernetes services enable communication between various components within and outside of the application. Kubernetes services help us connect applications together with other applications or users. For example, our application may have a particular group of pods to serve the front-end and another group may have another group of pods to serve the back-end. And a third group connecting to an external data source.
+
+![pic22](images/22.png)
+
+It is services that enable connectivity between these groups of pods. Services enable the front-end application to be made available to end users. It helps communication between back-end and front-end pods and helps in establishing connectivity to an external data source.
+
+Let's take a look at one use case of services. Let's assume we deployed our pod having a web application running on it. How do external users access the web page?
+
+First of all, let's look at existing setup. Kubernetes node has IP address 192.168.1.2 and my laptop is on the same network and its IP address is 192.168.1.10. The internal pod network is in the range 10.244.0.0 and the pod has an IP 10.244.0.2. Clearly, I can not ping or access the pod at address 10.244.0.2 as its in a seperate network.
+
+![pic23](images/23.png)
+
+So what are the options to access the web page? First, if we were to ssh into the Kubernetes node at 192.168.1.2. From the node, we would be able to access the pods web page by executing a curl command or if the node has a UI, we would fire up a browser and see the web page in a browser following the address is http://10.244.0.2. 
+
+But this is from inside the Kubernetes node and that's not what I really want. I want to be able to access the web server from my own laptop without having to ssh into the node and simply by accessing the IP of the Kubernetes node.
+
+So we need something in the middle to help us map request to the node from our laptop through the node to the pod running the web container. This is where the Kubernetes service comes into play.
+
+The Kubernetes service is an object just like pods, replicaset or deployments that we work with before. One use case is to listen to a port on the node and forward a request on that port to a pod in the node.
+
+This type of service is known as a node port service because the service listens to a port on the node and forward requests to the pods.
+
+#### Service Types
+
+The first service type is NodePort where the service makes an internal pod accessible on a port on the node. 
+
+The second is ClusterIP and in this case the service creates a virtual IP inside the cluster to enable communication between different services such as a set if front-end servers to a set of back-end servers.
+
+The third type is a load balancer where it provisions a load balancer for our application in supported Cloud providers. A good example of that will be to distribute load across to different web servers in our front-end tier.
+
+##### NodePort
+
+As mentioned before, a service can help us by mapping a port on the node to a port on the pod. If we look closely at the service, we can see that there are three parts to it.
+
+<p align="center">
+  <img src="images/24.png" alt="drawing" width="400"/>
+</p>
+
+**TargetPort :** The port on the pod where the actual web server is running 80 and is referred to as the target port because that is where the service forwards the request to. 
+
+**Port :** The second port is the port on the service itself. It is simply referred to as the port. Remember these naming are from the viewpoint of the service. The service is in fact like a virtual server inside the node. Inside the cluster, it has its own IP address, and that IP address is called the cluster IP of the service. 
+
+**NodePort :** And finally, we have the port in the node itself which we use to access the webserver externally and that is known as the NodePort. As we can see it is set to 30008. That is because no ports can only be in a valid range which by default is from 30000 to 32767.
+
+The simple definition file of the NodePort should also be as follows. In the spec section we have type and ports that type referes to the type of service we are creating. It could be ClusterIP, NodePort or Load Balancer. 
+
+In the ports section, the only mandatory field is port. If we do not specify a targetPort, it is assumed to be the same as the port and If we do not specify a NodePort, a free port in the valid range between 30000 and 32767 is automatically allocated. 
+
+The ports section is an array, so notice the `-` below the port section, which indicates the first item in the array. So we can have multiple such port mappings within a single service.
+
+The selector section, just like in a ReplicaSet and Deployment definition files, we provide a list of labels to define which pod it will connect to. For this, we need to look at the pod definition file used to create the pod. We need to pull the labels from the pod definition file and place them under the selector section.
+
+```properties
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-service
+
+spec:
+  type: NodePort
+  ports:
+    - targetPort: 80
+      port: 80
+      nodePort: 30008
+  selector:
+    app: myapp
+    type: front-end
+```
+
+After this point, we can now create the service and check the status of the service.
+
+```bash
+% kubectl create -f service-definition.yml
+service/myapp-service created
+```
+
+```bash
+% kubectl get service
+NAME            TYPE        CLUSTER-IP     EXTERNAL-IP   PORT(S)        AGE
+kubernetes      ClusterIP   10.96.0.1      <none>        443/TCP        56d
+myapp-service   NodePort    10.96.116.85   <none>        80:30008/TCP   39s
+```
+
+```bash
+curl http://192.168.1.2:30008
+```
+
+We can now use the port to access the we service using curl or a webserver. 
+
+So, what do we do when we have multiple pods? 
+
+<p align="center">
+  <img src="images/25.png" alt="drawing" width="300"/>
+</p>
+
+In a production environment, we may have multiple instances of our web application running for high availability and load balancing purposes. In this case, we have multiple similar pods running our web application.
+
+They all have the same labels with a key app and set to a value of myapp. The same label is used as a selector during the creation of the service. So when the service is created, it looks for a matching pod with the label and finds three of them. The service then automatically selects all the three pods as endpoints to forward the external requests coming from the user.
+
+We don't have to do any additional configuration to make this happen. It uses a random algorithm to balance the three different pods. Thus, the service acts as a built-in load balancer to distribute the load across different pods.
+
+And finally, let's look at what happens when the pods are distributed across multiple nodes. 
+
+<p align="center">
+  <img src="images/26.png" alt="drawing" width="300"/>
+</p>
+
+In this case, we have the web application on pods on separate nodes in the cluster. When we create a service without us having to do any additional configuration, Kubernetes automatically creates a service that spans across all the nodes in the cluster and maps the target port to the same node port on all the nodes in the cluster. 
+
+This way we can access the application using the IP of any node in the cluster. So we can access our application using the same port number 30008 as in our example. In short, the same port will be available to all nodes in the cluster.
+
+In any case, whether it's a single pod on a single node, multiple pods on a single node, or multiple pods on multiple nodes, the service is created exactly the same without us having to take any additional steps during service creation.
+
+When pods are removed or added, the service automatically updates, making it extremely flexible and adaptable.
