@@ -3176,3 +3176,57 @@ This way we can access the application using the IP of any node in the cluster. 
 In any case, whether it's a single pod on a single node, multiple pods on a single node, or multiple pods on multiple nodes, the service is created exactly the same without us having to take any additional steps during service creation.
 
 When pods are removed or added, the service automatically updates, making it extremely flexible and adaptable.
+
+##### Cluster IP
+
+A full-stack web application typically has different kinds of pods hosting different parts of an application. We may have a number of pods running a front-end webserver and another set of pods running a back-end server and a set of pods running a ley-value store like redis or another set of pods may be running a persisten database like mysql.
+
+<p align="center">
+  <img src="images/27.png" alt="drawing" width="450"/>
+</p>
+
+Web front-end server needs to communicate with back-end servers and backend servers need to communicate with Redis services. So what is the way to establish connectivity between these services or tiers of my application.
+
+As we can see above, the pods all have an IP address assigned to them. But these IPs are not static, these pods can go down any time and new pods are created. So we can not rely on yhese IP addresses for internal communication between the application. 
+
+Also what if the first front-end pod on 10.244.0.3 needs to be connected to a back-end service? Which of the three is it going for? And who makes this decision?
+
+A Kubernetes service can help us group the pods together and provide a single interface to access the pods in a group. For example, a service created for the back-end pod will help group all of the back-end pods together and provide a single interface for other pods to access this service. The request are forwarded to one of the pods under the service randomly.
+
+This enables us to easily and effectively deploy a micro services based application on Kubernetes cluster. Each layer can scale or move as required without impacting communication between the various services. Each service gets an IP and name assigned to it inside the cluster and that is the name that should be used by other pods to access the service.
+
+This type of service is known as ClusterIP. To create such a service, we can use a definiton file like the one below. ClusterIP is the default type so even If we didn't specify, It will automatically assume the type to be ClusterIP.
+
+The targetPort is the port where the back-end is exposed which in this case is 80 and the port is where the service is exposed which is 80 as well.
+
+To link the service to a set of pods we use selector. We need to copy the labels defined in the pod definition file and move it under the selector.
+
+```properties
+apiVersion: v1
+kind: Service
+metadata: 
+  name: back-end
+
+spec:
+  type: ClusterIP
+  ports:
+    - targetPort: 80
+      port: 80
+
+  selector:
+    app: myapp
+    type: back-end
+```
+
+```bash
+% kubectl create -f cluster-service-definition.yml
+service/back-end created
+```
+
+```bash
+% kubectl get services back-end
+NAME       TYPE        CLUSTER-IP    EXTERNAL-IP   PORT(S)   AGE
+back-end   ClusterIP   10.96.16.84   <none>        80/TCP    21s
+```
+
+The service can be accessed by other pods using the Cluster-IP or the Service Name.
