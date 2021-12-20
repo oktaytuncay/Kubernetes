@@ -3230,3 +3230,63 @@ back-end   ClusterIP   10.96.16.84   <none>        80/TCP    21s
 ```
 
 The service can be accessed by other pods using the Cluster-IP or the Service Name.
+
+### Ingress Networking
+
+We're deploying an application on Kubernetes for a company that has an online store selling products. We build the application into a Docker image and deploye it on the Kubernetes cluster as a pod in a deployment.
+
+Our application needs a database, so we deploye a MySQL database as a pod and create a service of type ClusterIP called mysql-service to make it accessible to our application.
+
+The applicatin can work with this setup and make the application accessible to the outside world, we create another service which is type NodePort and make our application available on a high port on the nodes in the cluster.
+
+In this example, a port 38080 is allocated for the service. Users can access the application using a URL such as below, which represents any node IP and port 38080. 
+
+- `http://<node-ip:38080>`
+
+That setup works and users are able to access the application. Whenever traffic increases, we increase the number of replicas pod to handle the additional traffic and the service takes care of solitting traffic between the pods.
+
+However, if we are talking about a production-level application, we know that there is more to consider than just simply speeding up traffic between pods.
+
+For example, we do not want the users to have to define in IP address every time. As in the example below, we can configure the DNS server to point to the IPs of the nodes.
+
+- `http://my-online-store.com:38080`
+
+If we also don't want our users to have to emember port number either. Then we need to bring in an additional layer between the DNS server and the cluster. This layer will work like a proxy server and proxies requests on port 80 to port 399080 on our nodes. With the help of this definition, users will now be able to access the application with an address like the one below.
+
+- `http://my-online-store.com`
+
+<p align="center">
+  <img src="images/28.png" alt="drawing" width="350"/>
+</p>
+
+This is if the application is hosted On-Prem data center. What we could do If we were on a Public Cloud environment like Oracle Cloud Infrastructure (OCI). In that case, instead of creating a service of type NodePort for the application, we could set it to type Load Balancer. 
+
+When we do that, Kubernetes will still do whatever it needs to do for a NodePort providing a high port for the service. But in addition to that, Kubernetes also sends a request to OCI to provision a network Load Balancer for the service.
+
+On receiving the request, OCI would then automatically deploy a Load Balancer configured to route traffic to the service ports on all the nodes and return its information to Kubernetes. The Load Balancer has an external IP that can be provided to users to access the application. 
+
+In this case, we said the DNS do point to this IP and users access the applicatuon using the URL `http://my-online-store.com`.
+
+Company's business grows and we have new services for our customers. For example, a video streaming service and we want to users to be able to access the new video streamin service by going to `http://my-online-store.com/watch`. We also would like to make our old application accessible at `http://my-online-store.com/wear`.
+
+Let's say, our development team developed new video streaming application as a completely different application as it has nothing to do with the existing one. However, in order to share the same cluster resources, we deploy the new application as a seperate deployment within the same cluster. 
+
+We create a service called video-service of type LoadBalancer. Kubernetes provisions port 38282 for this service and also provision a network LoadBalancer on the Cloud. The new Load Balancer has a new IP. 
+
+So how do we route traffic between each of these Load Balancers based on the URL that the user typed? We need yet another proxy or Load Balancer that can redirect traffic based on URLs to the different services?
+
+Everytime we introduce a new service, we have to reconfigure the Load Balancer and finally, we also need to enable SSL for our application so users can access the application using https. 
+
+Where do we configure that? It can be done at different levels, either at the application level or at the Load Balancer or proxy server level. We don't want the development team to implement it in their application as they would do it in different ways. We want it to be configured in one place with minimal maintenance.
+
+That's a lot of different configuration and all of this becomes difficult to manage when our application scales. It requires involing different teams, we need to configure the firewall rules for each service and it's expensive as well as for each service, a new cloud native Load Balancer needs to be provisioned.
+
+All can be done with another Kubernetes definition file that lives with the rest of our application. 
+
+<p align="center">
+  <img src="images/29.png" alt="drawing" width="350"/>
+</p>
+
+That's where Ingress comes in, Ingress helps our users access the application using a single externally accessible secure URL that we can configure to redirect to different services within our cluster based on the URL path. 
+
+Simply put, think of Ingress as a layer Load Balancer built-in to the Kubernetes cluster that can be configured using native Kubernetes primitives just like any other objects in Kubernetes.
