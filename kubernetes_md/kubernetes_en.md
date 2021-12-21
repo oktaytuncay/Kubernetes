@@ -3289,4 +3289,293 @@ All can be done with another Kubernetes definition file that lives with the rest
 
 That's where Ingress comes in, Ingress helps our users access the application using a single externally accessible secure URL that we can configure to redirect to different services within our cluster based on the URL path. 
 
-Simply put, think of Ingress as a layer Load Balancer built-in to the Kubernetes cluster that can be configured using native Kubernetes primitives just like any other objects in Kubernetes.
+Simply put, think of Ingress as a layer seven Load Balancer built-in to the Kubernetes cluster that can be configured using native Kubernetes primitives just like any other objects in Kubernetes.
+
+Even with Ingress, we still need to expose it to make it accessible outside the cluster, so we still have to either publish it as a NodePort or with a Cloud Native Load Balancer. With this setup, we're going to perform all our load-balancing authentication, SSL and URL based routing configuration on the ingress controller.
+
+So, how does it work? Without ingress, how would we do all of this? We would use a reverse proxy or a load balancing solution like nginx, HAProxy or traefik. We would deploy them on a Kubernetes cluster and configure them to road traffic to other services.
+
+Ingress is implemented by Kubernetes, with any of the services we listed above (nginx, HAProxy or traefik), we need to deploy the solution and then set up a set of rules to configure Ingress. The solution we deploy is called as an Ingress controller, and the set of rules we configure are called as Ingress resources.
+
+Ingress resources are created using definition files like the ones we use to create pods, deployments and services.
+
+A Kubernetes cluster does not come with an ingress controller by default. If we set up a cluster, we won't have an ingress controller built into it. So, if we simply create ingress resources and expect them to work, they won't. 
+
+The question is, what are we deploying? There are a number of solutions available for Ingress such as Oracle Load Balancer which is Oracle's layer seven HTTP Load Balancer, GCE which is Google's layer seven HTTP Load Balancer, nginx, Contour, HAPProxy, traefik and Istio.
+
+These ingress controller are not just another Load Balancer or nginx server. The Load Balancer components are just a part of it. The ingress controllers have additional intelligence built into them to monitor the Kubernetes cluster for new definitions or ingress resources and configure the Nginx server accordingly.
+
+So we start with a deployment definition file named nginx-ingress-controller with on replica and a simple pod definition tenplate. We'll label it nginx-ingress, and the image used is nginx-ingress-controller with the right version.
+
+1. Deployment Configuration File
+
+```properties
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-ingress-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: nginx-ingress
+  template:
+    metadata:
+      label:
+        name: nginx-ingress
+    spec:
+      containers:
+        - name: nginx-ingress-controller
+          image: quay.io/kubernetes-ingress-controller/nginx-ingress-controller:0.21.0
+      args:
+        - /nginx-ingress-controller
+```
+
+This is a special build of Nginx built specifically to be used as an ingress controller in Kubernetes. So it has it's own set up requirements, within the image the Nginx program is stored at location `/nginx-ingress-controller`, so we must pass that as the comamnd to start the Nginx controller service.
+
+Nginx has a number of configuration options such as path the store the logs, keep-alive threshold, SSL settings, seesion timeouts, etc. In order to decouple these configuration data from the Nginx controller image, we must create a ConfigMap object and pass that in as follows. 
+
+2. ConfigMap Configuration File
+
+```properties
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: nginx-configuration
+```
+
+The ConfigMap need to have any entries at this point, for this definition to be valid, the `args` section of the previous definition file must be as follows.
+
+1. Deployment Configuration File Additional v1
+
+```properties
+    spec:
+      containers:
+        - name: nginx-ingress-controller
+          image: quay.io/kubernetes-ingress-controller/nginx-ingress-controller:0.21.0
+      args:
+        - /nginx-ingress-controller
+        - --configmap=$(POD_NAMESPACE)/nginx-configuration
+```
+
+Creating a ConfigMap makes it easy for us to modify a configuration settings in the future. We'll just have to add it in to the ConfigMap and not have to worry about modifiying the Nginx configuration files.
+
+We must also pass into environment variables that carry the pods, name and namespace it is deployed to.
+
+1. Deployment Configuration File Additional v2
+
+```properties
+    spec:
+      containers:
+        - name: nginx-ingress-controller
+          image: quay.io/kubernetes-ingress-controller/nginx-ingress-controller:0.21.0
+      args:
+        - /nginx-ingress-controller
+        - --configmap=$(POD_NAMESPACE)/nginx-configuration
+      env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+```
+
+The Nginx service requires these to read the configuration data from within the pod. And finally specify the ports used by the Ingress controller, which happens to be 80 and 443.
+
+1. Deployment Configuration File Additional v3
+
+```properties
+    spec:
+      containers:
+        - name: nginx-ingress-controller
+          image: quay.io/kubernetes-ingress-controller/nginx-ingress-controller:0.21.0
+      args:
+        - /nginx-ingress-controller
+        - --configmap=$(POD_NAMESPACE)/nginx-configuration
+      env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+
+      ports:
+        - name: http
+          containerPort: 80
+        - name: https
+          containerPort: 443
+```
+
+We then need a service to expose the controller to the external users, so we create a service of type NodePort with the Nginx ingress label selector tooling the service to the deployment.
+
+3. Service Configuration File
+
+```properties
+apiVersion: v1
+kind: Service
+metadata: 
+  name: nginx-ingress
+spec:
+  type: NodePort
+  ports:
+  - port: 80
+    targetPort: 80
+    protocol: TCP
+    name: http
+  - port: 443
+    targetPort: 443
+    protocol: TCP
+    name: https
+  selector:
+    name: nginx-ingress
+```
+
+As mentioned before, the ingress controllers have additional intelligence built into them to monitor the Kubernetes cluster for ingress resources and configure the underlying Nginx server when something has changed.
+
+But for the ingress controller, to do this, it requires a service account with the right set of permissions. For that, we create a service account with the correct roles and role bindings as follows.
+
+4. Auth Configuration File
+
+```properties
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nginx-ingress-serviceaccount
+```
+
+So to summarize, with a `Deployment` of Nginx ingress image and `Service` to expose it, a `ConfigMap` to feed Nginx configuration data and a Service account (`Auth`) with the right permissions to access all of these objects. So, we should be ready with an Ingress controller in its simpliest form.
+
+The next part of creating ingress resources. Ingress resource is a set of rules and configurations applied on the Ingress controller. We can configure rules to say simply forward all incoming traffic to a single application or route traffic to different applications based on the URL.
+
+So, if a user goes to `www.my-online-store.com/wear` then brought to one of the applications, or if the user visits the `www.my-online-store.com/watch`, then watch the video app, etc. 
+
+Or we could route users based on the domain name itself. For example, the user can visit the wear application via the `wear.my-online-store.com` address or the watch application via the `watch.my-online-store.com` link.
+
+Let us look at how to configure these and a bit more detail. The Ingress resource is created with a Kubernetes definition file. Let's say the name of the file is `ingress-wear.yaml`.
+
+Under the spec we'll have back-end. and this section defines where the traffic will be routed to. So, its a single back-end, then we don't really have any rules. We can simply specify the `serviceName` and `servicePort` of the back-end where service.
+
+5. Ingress Resource Configuration File
+
+```properties
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: ingress-wear
+spec:
+  backend:
+    serviceName: wear-service
+    servicePort: 80
+```
+
+```bash
+% kubectl create -f ingress-wear.yaml
+ingress.extensions/ingress-wear created
+```
+
+```bash
+% kubectl get ingress
+NAME           CLASS    HOSTS   ADDRESS   PORTS   AGE
+ingress-wear   <none>   *                 80      70s
+```
+
+The new Ingress is now created and wrote all incoming traffic directly to the wear service. We use rules when we want to route traffic based on different conditions. 
+
+**For example:**
+- **Rule 1 :** `www.my-online-store.com`
+- **Rule 2 :** `www.wear.my-online-store.com`
+- **Rule 3 :** `www.watch.my-online-store.com`
+- **Rule 4 :** `Everything Else`
+
+Within each rule, we can handle different pods. For instance, according to rule 1, the `www.my-online-store.com/wear` path will route the traffic to the clothes app. The `www.my-online-store.com/watch` path will route the traffic to the video streaming app. And there will be a third path that routes anything other than the first two paths to the `404 not found`.
+
+Similarly, the second rule handles all traffic from `www.wear.my-online-store.com`, we can also have a path definition within this rule to route traffic to different paths. For example, say we have different applications and services within the clothes section for shopping or returns or support. When a user goes to `www.wear.my-online-store.com/support`, path will route the traffic to the support app.
+
+By default, it will be the shopping page but if the user changes the URL, it will be different backend services.
+
+A similar structure but different logic will apply to Rule 3 and finally, aything other than the listed, will go to the 4th Rule that would simply show a `404 not found error` page.
+
+We have rules at the top for each host or domain and inside each rule, we will have different pods to route traffic accordingly.
+
+Let's look at how we configure ingress resources in Kubernetes. We need to define a similar definition file as we defined for ingress-wear. But this time it's different, under the spec section, we need a set of rules.
+
+Now our requirement here is to handle all traffic to `my-online-store.com` and find them by URL path. So we just need a single rule for this, since we are only handling traffic to a single domain name which is `my-online-store.com`.
+
+In the rules section, we have an item that is an HTTP rule that specifies different paths. The paths section is an array of multiple items and these multiple items are define a path for each URL. The backend specification will remain the same as in an ingress-wear example. It will have the serviceName and servicePort sections.
+
+Similarly, we'll create a similar back-end entry to the second URL part for the watch-service to route all traffic coming in through the watch URL to the watch-service.
+
+```properties
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: ingress-wear-watch
+spec:
+  rules:
+    - http:
+        paths:
+        - path: /wear
+          backend:
+            serviceName: wear-service
+            servicePort: 80
+        - path: /watch
+          backend:
+            serviceName: watch-service
+            servicePort: 80
+```
+
+```bash
+% kubectl create -f ingress-wear-watch.yaml
+ingress.extensions/ingress-wear-watch created
+```
+
+By running the describe command, we should see two back-in URLs under the rules and the back-end services are pointing to just as we created it. 
+
+**Note :** `endpoints not found` errors are ignorable as backend services are not created.
+
+```bash
+% kubectl describe ingress ingress-wear-watch
+Name:             ingress-wear-watch
+Namespace:        default
+Address:          
+Default backend:  default-http-backend:80 (<error: endpoints "default-http-backend" not found>)
+Rules:
+  Host        Path  Backends
+  ----        ----  --------
+  *           
+              /wear    wear-service:80 (<error: endpoints "wear-service" not found>)
+              /watch   watch-service:80 (<error: endpoints "watch-service" not found>)
+Annotations:  <none>
+Events:       <none>
+```
+
+If we look closely at the output command above, we can see that there is something about a `Default backend`. If a user tries to access a URL that does not match of these rules, then the user is directed to the service specified as the Default backend. In this case, it happens to be a service named default-http-backend. So we must remeber to deploy such a service.
+
+If a user visits the URL `my-online-store.com/listen` or `my-online-store.com/eat` and If we don't have an audio or food delivery service, we may want to show them a nice message instead of an error. We can do this by configuring a default backend service to display that message.
+
+The third type of configuration is using domain names or hostnames. To make this definition, we can create a definition file similar to the ingress. Let's say we have two domains, we need to create two rules for each domain. To split the traffic by domain name, we use the host field.
+
+The host field in each rule matches the value specified by the domain name used in the requested URL and routes traffic to the appropriate backend. 
+
+In the previous case, we did not specify the host field. If we don't specify the host field, it will accept all traffic coming through this particular rule without matching the hostname.
+
+In this case, the definition file should be as follows.
+
+```properties
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: ingress-wear-watch
+spec:
+  rules:
+  - host: wear.my-online-store.com
+    http:
+      paths:
+      - backend:
+          serviceName: wear-service
+          servicePort: 80
+  - host: watch.my-online-store.com
+    http:
+      paths:
+      - backend:
+          serviceName: watch-service
+          servicePort: 80
+```
