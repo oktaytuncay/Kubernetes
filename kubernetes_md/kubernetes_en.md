@@ -3579,3 +3579,57 @@ spec:
           serviceName: watch-service
           servicePort: 80
 ```
+
+We can also create an Ingress resource from the imperative way like below.
+
+```bash
+kubectl create ingress <ingress-name> --rule="host/path=service:port"
+```
+
+- **Example:**
+
+  ```bash
+  kubectl create ingress ingress-test --rule="wear.my-online-store.com/wear*=wear-service:80"
+  ```
+
+#### Rewrite-Target option
+
+The watch app displays the video streaming webpage at 
+`http://<watch-service>:<port>/`
+
+The wear app displays the apparel webpage at 
+`http://<wear-service>:<port>/`
+
+We must configure Ingress to access the below URLs. When user visits the URL on the left, her/his request should be forwarded internally to the actual URL on the right. 
+
+|URL for User|Actual URL|
+|------------|----------|
+|`http://<ingress-service>:<ingress-port>/watch`|`http://<watch-service>:<port>/`|
+|`http://<ingress-service>:<ingress-port>/wear`|`http://<wear-service>:<port>/`|
+
+Without the rewrite-target option, this is what would happen
+
+|URL for User|Actual URL|
+|------------|----------|
+|`http://<ingress-service>:<ingress-port>/watch`|`http://<watch-service>:<port>/watch`|
+|`http://<ingress-service>:<ingress-port>/wear`|`http://<wear-service>:<port>/wear`|
+
+To fix that we need to re-write the URL when the request is passed on to the watch or wear applications. We can achieve that with the `rewrite-target` option and this can be done as below.
+
+```properties
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: test-ingress
+  namespace: critical-space
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /pay
+        backend:
+          serviceName: pay-service
+          servicePort: 8282
+```
