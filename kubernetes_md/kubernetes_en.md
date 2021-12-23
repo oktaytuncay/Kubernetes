@@ -3633,3 +3633,239 @@ spec:
           serviceName: pay-service
           servicePort: 8282
 ```
+
+### Network Policies
+
+Lets assume we have a web-server serving front-end to users, an application serving for back-end APIs and the database server.
+
+<p align="center">
+  <img src="images/30.png" alt="drawing" width="300"/>
+</p>
+
+The user sends in request to the web server at port 80. The web server then sends a request to the API server at port 5000 in the back-end. The API server then fetches data from the database server at port 3306 and sends the data back to the user.
+
+So there are two types of traffic here Ingress and Egress. For example, for a web server the incoming traffic from the users is an ingress traffic and the outgoing traffic requests to the app server is egress traffic.
+
+If we list the rules required for it to work, we should have a required ingress rules as follows.
+
+|Service  |Ingress Port|Egress Port|
+|---------|------------|-----------|
+|WebSerber|80          |5000       |
+|API      |5000        |3306       |
+|Database |3306        |No Egree   |
+
+Let us now look at Network Security in Kubernetes. Let's assume we have a cluster with set of nodes hosting a set of pods and services. Each node, pod and service has an IP address.
+
+One of the pre-requisities for networking in Kubernetes is, whatever solution we implement, the pods should be able to communicate with each other without having to configure any additional settings like routes.
+
+All pods are on a virtual private network that spans across the nodes in the Kubernetes cluster. And they can all by default reach each other using the IPs, pod names or services configured for that purpose.
+
+Kubernetes is configured by default with an `All Allow` rule that allows traffic from any pod to any other pod or services withing the cluster.
+
+Let us now bring back the previous simple architecture and see how it fits in Kubernetes. For each component in the application, we deploy a pod one for the front-end webserver, for the API server and one for the database. By default all these three layers can communicate with each others.
+
+<p align="center">
+  <img src="images/31.png" alt="drawing" width="250"/>
+</p>
+
+What if we do not want the front-end WebServer to be able to communicate with the database server directly? Say for example, our security teams and audits require us to prevent that. That is where we would implement a Network Policy to allow traffic to the database server only from the API server.
+
+A Network policy is an another object in the Kubernetes namespace. We can link a network policy to one or more pods. We can define rules within the network policy. In this case, we would say `Allow Ingress Traffic From the API Pod on Port 3306`.
+
+Once this policy is created, it blocks all other traffic to the pod and only allows traffic that matches the specified rule. So how does this definition in theory actually work?
+
+We label the pod and use the same labels on the podSelector field in the network policy. 
+
+- Database pod that should be labeled
+
+  ```properties
+  labels:
+     role: db
+  ```
+
+- podSelector field
+
+  ```properties
+  podSelector:
+    matchLabels:
+     role: db
+  ```
+
+And then we build the rule. Under policy types specify whether the rule is to allow ingress or egress traffic or both. In our case, we only want to allow ingress traffic to the database pod. 
+
+We specify the ingress rule that allows traffic from the API pod and we also specify the API pod again using labels and selectors. And the port to allow traffic on which is 3306.
+
+```properties
+policyTypes:
+- Ingress
+ingress:
+- from:
+  - podSelector:
+      matchLabels:
+        name: api-pod
+  ports:
+  - protocol: TCP
+    port: 3306
+```
+
+Let us put all that together.
+
+```properties
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-policy
+spec:
+    podSelector:
+      matchLabels:
+        role: db
+    policyTypes:
+    - Ingress
+    ingress:
+    - from:
+      - podSelector:
+          matchLabels:
+            name: api-pod
+      ports:
+      - protocol: TCP
+        port: 3306
+```
+
+```bash
+% kubectl create -f policy-definition.yaml
+networkpolicy.networking.k8s.io/db-policy created
+```
+
+```bash
+% kubectl get NetworkPolicy
+NAME        POD-SELECTOR   AGE
+db-policy   role=db        76s
+```
+
+#### Developing Network Policies
+
+In Kubernetes, once we allow incoming traffic, the response or reply to that traffic is allowed back automatically. So in the previous example, when we define an ingress rule for the database, we don't need to specify any other rule for the output to reach the API layer.
+
+But If the database pod tries to make an API call to the API pod, then that would not be allowed because that is now an egress traffic originating from the database pod and would require a specific egress rule to be defined.
+
+Let's say we only want to allow the API pod in the prod namespace to reach the database pod. For this, we need to add a new selector called as the namespace selector property and along with the pod selector property. Under this, we need to use match labels again to provide a label set on the namespace.
+
+```properties
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-policy
+spec:
+    podSelector:
+      matchLabels:
+        role: db
+    policyTypes:
+    - Ingress
+    ingress:
+    - from:
+      - podSelector:
+          matchLabels:
+            name: api-pod
+        namespaceSelector:
+          matchLabels:
+            name: prod
+      ports:
+      - protocol: TCP
+        port: 3306
+```
+
+Do that's what the namespace selector does, it helps in defining from what namespace traffic is allowed to reach the database pod. 
+
+If we wanted the database pod to be accessed by all objects in the prod namespace, then we would have removed the podSelector part and it would have been namespaceSelector only.
+
+```properties
+    policyTypes:
+    - Ingress
+    ingress:
+    - from:
+      - namespaceSelector:
+          matchLabels:
+            name: prod
+      ports:
+      - protocol: TCP
+        port: 3306
+```
+
+Let's look at another use case, say we have a backup server outside of the Kubernetes cluster and we want to allow the server to connect to the database pod. The podSelector and namespaceSelector fields that we use to define the traffic will not work as they will not be part of the cluster.
+
+But we know the IP address of the backup server, we can configure a network policy to allow traffic from specific IP addresses. 
+
+For this, we will add a new type of definition known as `ipBlock` definition which allows us to specify a range of IP addresses from which we can allow traffic to reach the database partition.
+
+```properties
+    policyTypes:
+    - Ingress
+    ingress:
+    - from:
+      - podSelector:
+          matchLabels:
+            name: api-pod
+        namespaceSelector:
+          matchLabels:
+            name: prod
+
+      - ipBlock:
+          cidr: 192.168.8.17/32
+      ports:
+      - protocol: TCP
+        port: 3306
+```
+
+These there seperate selectors can be used in separately ad individual rules or together as part of a single rule. In the above example, we have two elements, podSelector and ipBlock. So these are two rules. 
+
+The first rule has the podSelector and the namespaceSelector together and the second rule has the ipBlock selector. This definition works like the following equation,
+
+`(podSelector=api-pod and namespaceSelector=prod) or ipBlock=192.168.8.17/32`
+
+What if we separate them by adding `-` before the namespaceSelector like below?
+
+```properties
+- podSelector:
+    matchLabels:
+      name: api-pod
+
+- namespaceSelector:
+    matchLabels:
+      name: prod
+
+- ipBlock:
+    cidr: 192.168.8.17/32
+```
+
+Now they're three seperate rules in total. So this would mean that traffic matching the first rule is allowed that is from any pod matching the label api-pod in any namespace and the second rule is allowed any pod in prod namespace and third rule is for IP block specification. In such a case it works like the following equation, and almost all traffic is allowed.
+
+`podSelector=api-pod or namespaceSelector=prod or ipBlock=192.168.8.17/32`
+
+Let's assume, instead of the backup server initiating a backup, we have an agent on the database pod that pushes backup to the backup server. In that case, the traffic is originating from the dabase pod to an external backup server. For this, we need to have egress role defined.
+
+We first need to add egress to the policyTypes and then add a new egress section to define the properties of the policy. Instead of `from` in Ingress, we need to add the keyword `to`. Under to, we can use any of the selectors, such as a pod, namespace or an IP block selector.
+
+And in this case, since the database server is external, we use ipBlock selector and provide the cidr block for the server. The port to which the requests will be sent will be 80, so we will define the port as 80.
+ 
+```properties
+    policyTypes:
+    - Ingress
+    - Egress
+    
+    ingress:
+    - from:
+      - namespaceSelector:
+          matchLabels:
+            name: prod
+      ports:
+      - protocol: TCP
+        port: 3306
+
+    egress:
+    - to:
+      - ipBlock:
+          cidr: 192.168.8.17/32
+      ports:
+      - protocol: TCP
+        ports: 80
+```
