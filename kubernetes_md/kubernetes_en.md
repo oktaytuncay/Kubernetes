@@ -1,3 +1,16 @@
+## Kubernetes From Scratch to Advance 
+
+## Contact info
+
+Reach out to me at one of the following places!
+
+- **Website at** <a href="https://www.linkedin.com/in/oktay-tuncay-8b147724/" target="_blank">`linkedin.com`</a>
+- **Email:** oktaytncy@gmail.com
+
+## Table of Contents
+
+---
+
 ## Core Concepts
 
 **Node:** Node is a machine, physical or virtual one which Kubernetes installed. And node is a worker machine and that is where containers will be launchaned by Kubernetes. It was also known as minion's in the past.
