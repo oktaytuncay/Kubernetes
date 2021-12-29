@@ -4048,3 +4048,48 @@ To delete a PVC, we need to run `kubectl delete persistentvolumeclaim myclaim`. 
 It will not be available for reuse by any other claims or it can be deleted automatically with `persistentVolumeReclaimPolicy: Delete` option. This way as soon as the claim is deleted, the volume will be deleted as well. Thus freeing up storage on the device.
 
 A third option is recycling. In this case, the data in the data volume will be cleaned before being made available to other claims.
+
+### Stateful Sets
+
+Before mentioning Stateful Sets, we should understand why we need them. Why can we just live with deployments?
+
+Assume we are deploying a MySQL database with high availability solution. There are different technologies that we can use to have a highly available MySQL database. 
+
+The most straightforward one is a single master and multi slave topology where all writes come into the master server and read can be served by either the master or any of the slave servers.
+
+So the master server should be set up first before deploying the slaves. Once the slaves are deployed, we can perform a clone operation from the master server to the first slave.
+
+After the initial copy is completed, replication from the master to that slave can start and, on the slave node will always in sync with the database on the master. After that, we can set up the second slave.
+
+We could do it the same way where we clone data from the master, but every time we do that, it's going to impact the resources on the master, especially the network interface. 
+
+Since we have a copy of the Master on the first slave, it makes more sense to copy the data from the slave rather than the Master. So we wait for slave one to be ready and then clone data from slave one to slave to.
+
+And finally we enable continuous replication on slave two from the master. Note that both slaves are configured with the address of the Master node. That way, the slaves know where the master is. 
+
+But if the address of the master or slave changes, the whole structure will be broken. So we definitely need a static hostname.
+
+In this structure, first, the Master was created and then the slave-1 and slave-2 were created from the Master. We cannot guarantee that deployments in Kubernetes will be in this order. All pods of the deployment come up at the same time.
+
+
+Stateful sets are similar to deployment sets. We can create pods based on a template, they can scale up and scale down, they can perform rolling updates and rollbacks.
+
+But there are some differences.
+
+With stateful sets, pods are created in sequential order after the first pod is deployed, it must be in a running and ready state before the next pod is deployed.
+
+So that helps us ensure that the master is deployed first and then slave-1 and then slave-2. Stateful sets assign a unique index. The first pod starts at zero and assigns a number increasing by one.
+
+Each pod gets a unique name from this index, combined with the stateful set name. The first pod gets MySQL-0, the second gets MySQL-1, the third gets MySQL-2, etc. So no more random names.
+
+If we'll scale up by deploying another pod, MySQL-3 for instance, then it would know that it can perform a clone from MySQL-2.
+
+If the master node fails and the pod is recreated, it will still come up with the same name. Stateful sets maintain a sticky identity for each of their pods.
+
+The master will always remain the master and will available at the same address.
+
+
+
+
+
+
