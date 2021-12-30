@@ -4053,6 +4053,10 @@ A third option is recycling. In this case, the data in the data volume will be c
 
 Before mentioning Stateful Sets, we should understand why we need them. Why can we just live with deployments?
 
+<p align="center">
+  <img src="images/37.png" alt="drawing" width="500"/>
+</p>
+
 Assume we are deploying a MySQL database with high availability solution. There are different technologies that we can use to have a highly available MySQL database. 
 
 The most straightforward one is a single master and multi slave topology where all writes come into the master server and read can be served by either the master or any of the slave servers.
@@ -4071,7 +4075,6 @@ But if the address of the master or slave changes, the whole structure will be b
 
 In this structure, first, the Master was created and then the slave-1 and slave-2 were created from the Master. We cannot guarantee that deployments in Kubernetes will be in this order. All pods of the deployment come up at the same time.
 
-
 Stateful sets are similar to deployment sets. We can create pods based on a template, they can scale up and scale down, they can perform rolling updates and rollbacks.
 
 But there are some differences.
@@ -4088,8 +4091,67 @@ If the master node fails and the pod is recreated, it will still come up with th
 
 The master will always remain the master and will available at the same address.
 
+We might not always need a Stateful Sets, it's really depends on the kind of application we're trying to deploy. We may consider deploying Stateful Sets with the following conditions.
 
+- If the instances need to come up in a particular order
+- If the instances need a stable name, etc..
 
+We need to create a deployment definiton file with a pod definition template inside it. Unlike the deployment definition file, kind must be `StatefulSet` instead of deployment. 
 
+Apart from that, a Stateful Set also requires a service name specified, we must specify the name of a `Headless service`. In the light of this information, our definition file should be as follows.
 
+```properties
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+  labels:
+    app: mysql
 
+spec:
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql
+
+  replicas: 3
+
+  selector:
+    matchLabels:
+      app: mysql
+
+  serviceName: mysql-h
+```
+
+```bash
+% kubectl create -f statefulset-definition.yml
+statefulset.apps/mysql created
+```
+
+When we create a StatefulSet using the definition file, it creates pods one after the other. That's ordered graceful deployment. Each pod gets a stable, unique DNS record on the network that any other application can use to access a pod.
+
+When we scale the StatefulSet, it scales in an ordered greceful fashion where each pod comes up, becomes ready and only then next pod comes up. This helps when we want to scale MySQL databases, as each new instance can clone from the previous instance.
+
+```bash
+% kubectl scale statefulset mysql --replicas=5
+```
+
+It works in th reverse order when we scale it down, the last instance is removed first, followed by the second last one.
+
+```bash
+% kubectl scale statefulset mysql --replicas=3
+```
+
+It's also same for termination. When we delete a StatefulSet, the pods are deleted in the reverse order.
+
+```bash
+% kubectl delete statefulset mysql
+```
+
+This is the default behavior of StatefulSet, but we can override this behavior to ensure that StatefulSet does not follow a sequential initialization. For this, we can set the `podManagementPolicy: Parallel` so that it deploys all pods in parallel. The default value of this field is ordered ready.
+
+#### Headless Services
