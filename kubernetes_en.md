@@ -4306,3 +4306,5 @@ We have a StatefulSet with `volumeClaimTemplates` and a `StorageClass` definitio
 5. The same steps are performed for the other pods in the cluster.
 
 If one of the pods in the cluster fails and is recreated or rescheduled onto a node, StatefulSet does not automatically delete the PVC or the associated volume to the pod. Rather, it allows the pod to reconnect to the same privacy to which it was added before. Thanks to this behavior, StatefulSet provides stable storage for pods.
+
+#### Defining, Creating, and Modifying Container Images
