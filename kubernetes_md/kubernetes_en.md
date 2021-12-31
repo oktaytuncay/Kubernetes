@@ -4127,6 +4127,8 @@ spec:
   serviceName: mysql-h
 ```
 
+The serviceName here is used to define the correct connection string for the pods. And I will explain this in more detail in the next section.
+
 ```bash
 % kubectl create -f statefulset-definition.yml
 statefulset.apps/mysql created
@@ -4155,3 +4157,152 @@ It's also same for termination. When we delete a StatefulSet, the pods are delet
 This is the default behavior of StatefulSet, but we can override this behavior to ensure that StatefulSet does not follow a sequential initialization. For this, we can set the `podManagementPolicy: Parallel` so that it deploys all pods in parallel. The default value of this field is ordered ready.
 
 #### Headless Services
+
+When we create a StatefulSet, it deploys one pod at a time and each pod has a stable, unique name, which is MySQL-0, MySQL-1, and MySQL-2, and so we can point the slaves to reach the master at MySQL-0.
+
+However, there is something missing here, we redirect an application within the cluster to another application through services. So if we had a WebServer then we would need to create a service for the database to make the database server accessible to the Webserver.
+
+The service acts as a load balancer. The traffic coming into the service is balanced across all the pods in the deployment. The service has a cluster IP and a DNS name associated it, which usually goes like `mysql.default.svc.cluster.local` 
+
+So any other application within the environment, like a WebServer can user this DNS name to reach MySQL database.
+
+<p align="center">
+  <img src="images/38.png" alt="drawing" width="400"/>
+</p>
+
+Since this is a master-slave topology, the reads could be served by master or slaves. But the writes must only be processed by the master. So, it's ok for the WebServer to read from the MySQL service we created but we can't write to that service as it's going to load balance the writes to all pods under the service. And that's not what we want for MySQL cluster.
+
+So we want to point the WebServer to the Master pod server only, but how do you do that? If we know the IP address of the Master pod, we can configure that in the WebServer. But IP addresses are dymanic and can change if the pod is recreated. So we can not use that.
+
+What we need is a service that does not load balance requests, but gives us a DNS entry to reach each pod, and that's what a `headless service` is.
+
+<p align="center">
+  <img src="images/39.png" alt="drawing" width="400"/>
+</p>
+
+A headless service is created like a normal service, but it does not have an IP of it's own and does not performa any load balancing. All it does is create a DNS entries for each pod using the pod name and a subdomain. When we create a headless service named MySQL-h, each pod gets a DNS record created in the form `pod_name.headless-servicename.namespace.svc.cluster-domain`.
+
+In our case, we can define the `mysql-0.mysql-h.default.svc.cluster.local` DNS entry for the Web application and thus using this connection string, it always makes the connection to the MySQL-0. Example definition file for that should be as follows.
+
+```properties
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-h # --> The name of the service
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: mysql
+  clusterIP: Node
+```
+
+When the headless service is created, the DNS entries are created for pods only if the two conditions are met while creating a pod. Under the spec section of a pod definition file, we have two optional fields, hostname and subdomain.
+
+We must specify the subdomain that will have the same value as the name of the service. When we do that, it creates a DNS record for the name of the service to point to the pod.
+
+However, it still does not create a record for individual pods. For that, we must specify the hostname option in the definition file. Only then does it create a DNS record with a pod_name as well.
+
+```properties
+apiVersion: v1
+kind: Pod
+metadata:
+  name: myapp-pod
+  labels:
+    app: mysql
+spec:
+  containers:
+  - name: mysql
+    image: mysql
+  
+  subdomain: mysql-h
+  hostname: mysql-pod
+```
+
+When we deploy the pod as part of a deployment, if there is no hostname or subdomains specified, the deployment does not add a hostname or subdomain to the pod. So the headless service does not create a record for the pods.
+
+If we specified the hostname or subdomain in the pod template section, then it assigns the same hostname and subdomain for all the pods because their deployment simply duplicates all the properties for the same pod.
+
+And this is another way of showing StatefulSet is different from Deployment, we don't need to specify a subdomain or hostname when creating StatefulSet. The StatefulSet automatically assigns the right hostname for each pod based on the pod name, and it automatically assigns the right subdomain based on the headless service name.
+
+To define the correct headless server to the StatefulSet, we must specify the service name explicitly using the service name option
+in the StatefulSet definition file.
+
+That's how it knows what subdomain to assign to the pod, the StatefulSet takes the names that we specified and add that to as a subdomain property when the pod is created.
+
+#### Storage in StatefulSets
+
+<p align="center">
+  <img src="images/40.png" alt="drawing" width="600"/>
+</p>
+
+As we did before, we created a persistent volume, then using that persistent volume, we created the persistent volume claim, and finally, we created a pod using this persistent volume claim. That's for a single persistent volume mapped to a single persistent volume claim to a single pod definition file.
+
+<p align="center">
+  <img src="images/41.png" alt="drawing" width="600"/>
+</p>
+
+With dynamic provisioning, we created StorageClass, we take out the manual creation of persistent volumes and use storage provisionals to automatically provision volume on Cloud providers which is Oracle in our case. With this solution, PV is created automatically. This works for a pod with a volume.
+
+How does that change with Deployments or StatefulSets? With StatefulSets, when we specifty the same pvc under the pod definition, all pods created by that StatefulSets and tries to use the same volume.
+
+If we want seperate volumes for each pod, as in the MySQL replication use case or any other replication solution, the pods should not share data. Instead, each pod should have their own storage layer. So each pods needs a PVC for itself.
+
+A PVC is bound to a PV, so each PVC needs a PV. And of course, these PVs can be created from single or different storage. To automatically create a PVC for each pod in a StatefulSet, we can do that using a PersistentVolumeClaim template.
+
+```properties
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mysql
+  labels:
+    app: mysql
+
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: mysql
+
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+      - name: mysql
+        image: mysql
+        volumeMounts:
+        - mountPath: /var/lib/mysql
+          name: data-volume
+
+        volumes:
+        - name: data-volume
+          persistentVolumeClaim:
+          claimName: data-volume
+
+# After this section is taken from the PersistentVolumeClaim template.
+  volumeClaimTemplates:
+  - metadata:
+      name: data-volume
+    spec:
+      accessModes:
+        - ReadWriteOnce
+
+    storageClassName: oci-fss
+    resources:
+      requests:
+        storage: 500Mi
+```
+
+The `volumeClaimTemplates` is an array so we can specify multiple templates. 
+
+We have a StatefulSet with `volumeClaimTemplates` and a `StorageClass` definition with the right provisioner for OCI. When the StatefulSet is created, 
+
+1. It creates the first pod.
+2. During the creation of the pod, a PVC is created which is associated with a StorageClass.
+3. Then creates a PV and associates the PV with the volume.
+4. Binds the PV to the PVC.
+5. The same steps are performed for the other pods in the cluster.
+
+If one of the pods in the cluster fails and is recreated or rescheduled onto a node, StatefulSet does not automatically delete the PVC or the associated volume to the pod. Rather, it allows the pod to reconnect to the same privacy to which it was added before. Thanks to this behavior, StatefulSet provides stable storage for pods.
