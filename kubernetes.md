@@ -4307,4 +4307,278 @@ We have a StatefulSet with `volumeClaimTemplates` and a `StorageClass` definitio
 
 If one of the pods in the cluster fails and is recreated or rescheduled onto a node, StatefulSet does not automatically delete the PVC or the associated volume to the pod. Rather, it allows the pod to reconnect to the same privacy to which it was added before. Thanks to this behavior, StatefulSet provides stable storage for pods.
 
-#### Defining, Creating, and Modifying Container Images
+### Authentication, Authorization and Admission Control
+
+`kube-apiserver` is at the center of all operations within Kubernetes. We interact with it via the `kubectl` utility or by accessing the API directly. And in this way, we can perform almost any operation on the cluster. So access to the API server itself is the first line of defense to control.
+
+We need to answer two questions in here. Who can access the cluster and what can they do? Who can access the API server is defined by the `authentication` mechansims. There are different ways that we can authenticate to the API server.
+
+- Static Files - Username and Passwords
+- Static Files - Username and Tokens
+- Certificates
+- External Authentication providers - LDAP
+- Service Accounts for Machines
+
+Once they gain access to the cluster, what can they do is defined authorization mechanisms, authorization is implemented using (RBAC) role-based access controls where users are associated to groups with specific permissions. In addition, there are other authorization modules like the (ABAC) attribute based access control, Node Authorization, Webhook mode, etc...
+
+All communication with the cluster between the various components, such as the etcd cluster, the kube controller manager, kube scheduler, kube API server, as well as those running on the worker nodes such as the kubelet and kube proxy is secured using TLS encryption.
+
+#### Authentication
+
+We can not create or view users in a Kubernetes cluster. However, Kubernetes can manage service accounts. We can create and manage service accounts using the Kubernetes API as below.
+
+```bash
+% kubectl create serviceaccount saccount1
+serviceaccount/saccount1 created
+```
+
+```bash
+% kubectl get serviceaccount       
+NAME        SECRETS   AGE
+default     1         6d12h
+saccount1   1         36s
+```
+
+All user access is managed by the API server including through kubectl or API directly. The kube-apiserver authenticates the requests before processing it. There are different authentication mechanisms that can be configured. 
+
+We can have a list of username and password in a static password file, or usernames and tokens in a static token file, or we can authenticates using certificates, or another option is to connect to the third-party authentication protocols like LDAP, Kerberos, etc...
+
+We can create a list of users and their passowrds in a csv file and user that as the source for user information. The file has three columns; password, username and user_id. 
+
+```csv
+password123, user1, u0001
+password123, user1, u0001
+password123, user1, u0001
+password123, user1, u0001
+password123, user1, u0001
+```
+
+Then as a `basic-auth-file` option, we can pass the filename to kube-apiserver as below. Click the <a href="https://kubernetes.io/docs/reference/command-line-tools-reference/kube-apiserver/" target="_blank">link</a> for more details.
+
+```bash
+ExecStart=/usr/local/bin/kube-apiserver \\
+ --advertise-address=${INTERNAL_IP} \\
+ --allow-privileged=true \\
+ --apiserver-count=3 \\
+ --authorization-mode=Node,RBAC \\
+ --bind-address=0.0.0.0 \\
+ --enable-swagger-ui=true \\
+ --enable-bootstrap-token-auth=true \\
+ --etcd-servers=https://192.168.5.11:2379,https://192.168.5.12:2379 \\
+ --event-ttl=1h \\
+ --runtime-config=api/all \\
+ --service-cluster-ip-range=10.96.0.0/24 \\
+ --service-node-port-range=30000-32767 \\
+ --v=2
+ --basic-auth-file=user-details.csv
+```
+
+We must then restart the kube-apiserver for these options to take effect.
+
+If we setup our cluster using the cluster using the kubeadm tool, then we must modify the kube-apiserver pod defifinition file. The tool automatically restart the kube-apiserver once we update the file. The kubeadm tool automatically The kube-apiserver is running as a Docker container on our master node and the location of the file is `/etc/kubernetes/manifests/kube-apiserver.yaml`/
+
+```properties
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  name: kube-apiserver
+  namespace: kube-system
+spec:
+  containers:
+  - command:
+    - kube-apiserver
+    - --authorization-mode=Node,RBAC
+    - --advertise-address=152.70.191.125
+    - --allow-privileged=true
+    - --enable-admission-plugins=NodeRestriction
+    - --enable-bootstrap-token-auth=true 
+    - --basic-auth-file=user-details.csv
+    image: k8s.gcr.io/kube-apiserver-amd64:v1.11.3
+    name: kube-apiserver
+```
+
+To authenticate using the basic credentials while accessing the API server, we need to soecify the username and passoword in a curl command as below.
+
+```bash
+curl -v -k https://152.70.191.125:6443/api/v1/pods -u "username:p"
+```
+
+In the CSV file with user details, we can add a fourth column with group details to assign users to specific groups.
+
+```csv
+password123, user1, u0001, group1
+password123, user1, u0001, group1
+password123, user1, u0001, group2
+password123, user1, u0001, group2
+password123, user1, u0001, group3
+```
+
+Similarly, instead of a static password file, we can have a static token file. Instead of password, we specify a token. Pass the token file as an option `--token-auth-file=user-details.csv=user-details.csv` to the kube-apiserver.
+
+While authenticating, we need to specify the token as an authorization bearer token as follows.
+
+```bash
+curl -v -k https://152.70.191.125:6443/api/v1/pods --header "Authorization: Bearer KfjsajandjaKDFLALDnsja38rnhc"
+```
+
+#### Security KubeConfig
+
+It is much safer to use a certificate than to have the username and password written clearly. To do this we can use a similar command below.
+
+```bash
+curl -v -k https://152.70.191.125:6443/api/v1/pods \
+  --key admin.key
+  --cert admin.crt
+  --cacert ca.crt
+```
+
+But we can specify the same information using the options `--server`, `--client-key`, `--client-certificate` and `--certificate-authority` with the kubectl utility.
+
+```bash
+kubectl get pods
+  --server 152.70.191.125:6443
+  --client-key admin.key
+  --client-certificate admin.crt
+  --certificate-authority ca.crt
+```
+
+Typing those in every time is a chore. To make our job easier, we can move this information to a configuration file named KubeConfig file as follows and then we can specify this file with the `--kubeconfig` option in our command. 
+
+```bash
+--server 152.70.191.125:6443
+--client-key admin.key
+--client-certificate admin.crt
+--certificate-authority ca.crt
+```
+
+Let's assume our config file name is `config`. Then the command should be as below. 
+
+```bash
+kubectl get pods --kubeconfig config
+```
+
+By default, the kubectl tool is in a file named config under the `$HOME/.kube/config` directory. So if we create the kube config file there, we don't have to specify the paths to the file explicitly in the kubectl command. That's the reason we haven't specifying any options for our kubectl commands.
+
+<p align="center">
+  <img src="images/42.png" alt="drawing" width="500"/>
+</p>
+
+There are three sections in the config file. Clusters, users, and contexts. Clusters of the various Kubernetes clusters that we need access to. Say we have multiple clusters for dev, prod, and for one of the Cloud providers. 
+
+Users are the user accounts with which we have access to these clusters. For example; admin user, dev user, or user for prod environment. 
+
+Finally, context, marry these together. Context define which user account will be used to access which cluster. For example, we could create a context named admin@production that will use the admin account to access a production cluster.
+
+We're not creating any new users or configuring any kind of user access or autorozation in the cluster with this process. We use existing users with their existing privileges and define which user to use to access which cluster.
+
+This way we don't need to specify user certificates and server addresses in every kubectl command. So how does this fit in our example? 
+
+The `server` specification in our command goes into the Clusters section with the name `MyKubeExample`. The `client-key`, `client-certificate` and, `certificate-authority` go into the Users section named MyKubeAdmin. Next, we create a context specifying to use the MyKubeAdmin user to access MyKubeExample cluster named `MyKubeAdmin@MyKubeExample`.
+
+Let's look at a real KubeConfig file. Each of these three sections are an array format that we can specify multiple clusters, users or contexts within the same file.
+
+```properties
+apiVersion: v1
+kind: Config
+clusters:
+- name: MyKubeExample
+  cluster:
+    certificate-authority: /etc/kubernetes/pki/ca.crt
+    server: https://MyKubeExample:6443
+
+contexts:
+- name: MyKubeAdmin@MyKubeExample
+  context:
+    cluster: MyKubeExample
+    user: MyKubeAdmin
+
+users:
+- name: MyKubeAdmin
+  user:
+    client-certificate: /etc/kubernetes/pki/admin.crt
+    client-key: admin.key
+```
+
+Kubernetes read default path. So once the file is ready, we don't have to create any object.
+
+
+```properties
+apiVersion: v1
+kind: Config
+
+current-context: dev-user@oracle
+
+clusters:
+- name: MyKubeExample
+- name: prod
+- name: dev
+
+contexts:
+- name: MyKubeAdmin@MyKubeExample
+- name: dev-user@oracle
+- name: prod-user@prod
+
+
+users:
+- name: MyKubeAdmin
+- name: admin
+- name: dev-user
+- name: prod-user
+```
+
+Kubernetes always use the context dev-user@oracle to access the Oracle clusters using the dev user's credential. 
+
+There are command line options available within kubectl to view and modify the KubeConfig files. We can use the following command to view the current file.
+
+```properties
+% kubectl config view
+apiVersion: v1
+kind: Config
+clusters:
+- cluster:
+    certificate-authority-data: DATA+OMITTED
+    server: https://152.70.191.125:6443
+  name: cluster-chduxhap4ea
+contexts:
+- context:
+    cluster: cluster-chduxhap4ea
+    user: user-chduxhap4ea
+  name: context-chduxhap4ea
+current-context: context-chduxhap4ea
+users:
+- name: user-chduxhap4ea
+  user:
+  ...
+  ...
+  ...
+```
+
+Alternatively, we can specify a KubeConfig file by passing the KubeConfig option in the command as below.
+
+```bash
+% kubectl config view --kubeconfig=my-config
+```
+
+To make our config file the default, we can copy it to the default directory with the config name.
+
+- To change the current context
+  ```bash 
+  % kubectl config use-context prod-user@prod
+  ```
+
+We can also make other changes in the file update or delete items in it. We can use `kubectl config -h` to see all possible operations.
+
+The context section in the KubeConfig file can take additional field called namespace where we can specify a particular namespace. This way, when we switch to that context, we'll automatically be in a specific namespace.
+
+Instead of defining certificate-authority and specifying a path, we can also add certificate-authority-data variable and we can paste the content of the certificate itself. If we already have crt file, we can fetch the content with the following command.
+
+```bash
+cat ca.crt | base64
+```
+
+Similarly, if you see a file with the certificates data in the encoded format, we can use the following command to decode the certificate.
+
+```bash
+echo "AT17...hjR" | base --decode
+```
