@@ -4502,7 +4502,6 @@ users:
 
 Kubernetes read default path. So once the file is ready, we don't have to create any object.
 
-
 ```properties
 apiVersion: v1
 kind: Config
@@ -4518,7 +4517,6 @@ contexts:
 - name: MyKubeAdmin@MyKubeExample
 - name: dev-user@oracle
 - name: prod-user@prod
-
 
 users:
 - name: MyKubeAdmin
@@ -4560,11 +4558,21 @@ Alternatively, we can specify a KubeConfig file by passing the KubeConfig option
 % kubectl config view --kubeconfig=my-config
 ```
 
-To make our config file the default, we can copy it to the default directory with the config name.
+To make our config file the default, we can copy it to the default directory with the config name. 
 
 - To change the current context
   ```bash 
   % kubectl config use-context prod-user@prod
+  ```
+
+Or we can use the following command instead of copying the file.
+
+```bash
+% kubectl config --kubeconfig=/root/my-kube-config use-context MyKubeExample
+```
+- To know the current context
+  ```bash 
+  % kubectl config --kubeconfig=/root/my-kube-config current-context
   ```
 
 We can also make other changes in the file update or delete items in it. We can use `kubectl config -h` to see all possible operations.
@@ -4581,4 +4589,257 @@ Similarly, if you see a file with the certificates data in the encoded format, w
 
 ```bash
 echo "AT17...hjR" | base --decode
+```
+
+#### API Groups
+
+We can access the API server with the following command and can see the version of the cluster.
+
+```bash
+curl https://kube-master:6443/version
+```
+
+Similarly, we can get list of pods with API query.
+
+```bash
+curl https://kube-master:6443/api/v1/pods
+```
+
+APIs are categorized into two. The core group and the named group, the core group APIs (/api) is will all core functinality exists such as namespaces, pods, rc, events, nodes, pv, etc..
+
+The named group APIs (/apis) are more organized and all the newer features are going to be made available through these named groups. It has groups under it apps, extensions, networking, storage, authentication, authorization, etc..
+
+<p align="center">
+  <img src="images/43.png" alt="drawing" width="500"/>
+</p>
+
+Within apps, we have deployments, replica sets, stateful sets and within networking, we have network policies. So the ones at the top are API groups and the ones at the bottom are resources in those groups.
+
+Each resource in this has a set of actions associated with them, things that we can do with these resources, such as list the deployments, get information about one of these deployments, create a deployment, delete a deployment, update a deployment, watch deployment, etc.. These are known as Verbs.
+
+If you get the Unauthorized message when running the curl command, as an alternative option, a kubectl proxy client can be started in a diffent session. 
+
+The kubectl proxy command launches a proxy service locally on Port 8001 and uses credentials and certificates from our cube config file to access the cluster.
+
+```bash
+% kubectl proxy
+Starting to serve on 127.0.0.1:8001
+```
+
+Now we can access the kubectl proxy servers at 8001, and the proxy will use the credentials from KubeConfig file to forward our request to the API server.
+
+```curl
+% curl http://localhost:8001 -k
+{
+  "paths": [
+    "/.well-known/openid-configuration",
+    "/api",
+    "/api/v1",
+    "/apis",
+    "/apis/",
+    "/apis/admissionregistration.k8s.io",
+```
+
+```curl
+% curl http://localhost:8001/version -k
+{
+  "major": "1",
+  "minor": "21",
+  "gitVersion": "v1.21.5",
+  "gitCommit": "3d40f84d0e5d471e102faa877bec487080a0375f",
+  "gitTreeState": "clean",
+  "buildDate": "2021-12-02T02:02:30Z",
+  "goVersion": "go1.16.9 BoringCrypto",
+  "compiler": "gc",
+  "platform": "linux/amd64"
+}
+```
+
+The `Kube Proxy` and `Kubectl Proxy` are not the same. Kube proxy is used to enable connectivity between pods and services across different nodes in the cluster.
+
+Kubectl proxy  is an http proxy service created by Kubectl utility to access the Kube API server.
+
+#### Authorization
+
+There are different authorization mechanisms supported by Kubernetes, such as Node authorization, ABAC (Attribute Based Authorization), RBAC (Role Based Authorization) and Webhook.
+
+**Node Authorization :** We know that the Kube API server is accessed by us for management purposes and kubelet on nodes within the cluster for management purposes within the cluster. Node Authorization is a special-purpose authorization mode that specifically authorizes API requests made by kubelets.
+
+**ABAC :** Defines an access control paradigm whereby access rights are granted to users through the use of policies which combine attributes together.
+
+For example, User Attribute-Based Authorization associates a user or a group of users with a set of permissions. Lets assume, the dev user can view, create and delete pods. We can do this by creating a policy file with a set of policies defined in a JSON format.
+
+This way, we pass this file into the API server.
+
+Similarly, we create a policy definition file for each user or group in this file. When we add, delete security rules, we must edit the policy file manually and restart the Cube API server.
+
+In short, attribute-based access control configurations are difficult to manage.
+
+**RBAC :** Instead of directly associating a user or a group with a set of permissions, we define roles. For instance, we can create a role with the set of permissions required for developers and then we associate all the developers to that role.
+
+Whenever a change needs to be made to the users access, we simply modify the role and it reflects on all developers immediately.
+
+**Webhook :** If we want to outsource all the authorization mechanisms, we can go with Webhook. 
+
+Suppose we want to manage authorization externally rather than through built-in mechanisms like RBAC. For instance, `Open Policy Agent` is a third party tool that helps with admission control and authorization.
+
+We can have Kubernetes, make an API call to the open policy agent with the information about the user and her/his access requirements and have the open policy agent decide if the user should be permitted or not.
+
+**Always Allow and Always Denied :** Besides these four authorization mechanisms, `Always Allow` and `Always Denied`. As the name suggests, Always Allow, allows all requests without performing any authorization checks.
+
+Always Deny is the opposite of that, denies all requests without performing any authorization checks.
+
+The modes are set using the `--authorization-mode` option on the Kube API server, if we don't specify this option, it is set to `Always Allow` by default.
+
+We can provide a comma-separated list of multiple mods we want to use `--authorization-mode=Node,RBAC,Webhook`. When you have multiple modes configured, the request is authorized using each one in the order it is specified.
+
+For example, when a user sends a request, it's first handled by the Node Authorizer. The Node Authorizer handles only no requests.
+
+So it denies the request. Whenever a module denies the request, it is forwarded to the next one in the chain.
+
+The RBAC module performs its checks and grants the user permission, authorization is complete and user is given access to the requested object. As soon as a module approves the request, no more checks are done and the user is granted permission.
+
+##### Create a Role
+
+Each rule has three sections apiGroups, resources and verbs. The actions we want to give are defined by the verbs section. If we want to give another authorization to the developer group, we can add another rule to the same file.
+
+```properties
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: developer
+rules:
+- apiGroups: [""] # "" indicates the core API group
+  resources: ["pods"]
+  verbs: ["get", "watch", "list"]
+
+- apiGroups: [""]
+  resources: ["ConfigMap"]
+  verbs: ["create"]
+```
+
+```bash
+% kubectl create -f developer-role.yaml 
+role.rbac.authorization.k8s.io/developer created
+```
+
+The next step is to link the user to that role. To do this we have to create another object called roll binding. The roll binding object links a user object to a role.
+
+It has two sections. The subjects is where we specify the user details. The roleRef section is where we provide the details of the role we created. We should also note that roles and role bindings must be in the same namespaces. The namespace of the RoleBinding determines where the permissions are granted.
+
+```properties
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: developer-binding
+subjects:
+# You can specify more than one "subject"
+- kind: User
+  name: dev-user
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role #this must be Role or ClusterRole
+  name: developer # this must match the name of the Role or ClusterRole you wish to bind to
+  apiGroup: rbac.authorization.k8s.io
+```
+
+```bash
+% kubectl create -f developer-binding.yaml 
+rolebinding.rbac.authorization.k8s.io/developer-binding created
+```
+
+If we want to know if you have access to a particular resource in the cluster, we can take the benefit of the `can-i` command.
+
+```bash
+% kubectl auth can-i create deployments
+yes
+```
+
+```bash
+% kubectl auth can-i create pods 
+yes
+```
+
+The user with admin privileges can run the same command for other users as follows.
+
+```bash
+% kubectl auth can-i create pods --as developers
+no
+```
+
+```bash
+% kubectl auth can-i create pods --as developers --namespace dev
+yes
+```
+
+If we want to limit access within the namespace, we can do that too.
+
+For example, we have five pods in the namespace and we want to give the user access to only some of these pods. We can restrict access by adding a resourceNames field to the rule.
+
+```properties
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: developer
+rules:
+- apiGroups: [""] # "" indicates the core API group
+  resources: ["pods"]
+  verbs: ["get", "watch", "list"]
+
+- apiGroups: [""]
+  resources: ["ConfigMap"]
+  verbs: ["create"]
+  resourceNames: ["pod1", "pod2"]
+```
+
+##### Cluster Roles
+
+A ClusterRole can be used to grant the same permissions as a Role. Used to authorize users to cluster-wide resources such as nodes, persistent volumes,  secrets and etc...
+
+Cluster Roles are just like roles, except they are for a cluster scoped resources. For example, an admin role can be created to provide a cluster administrator permissions to view, create or delete nodes in a cluster. As seen below, resources are nodes.
+
+```properties
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cluster-admin
+rules:
+- apiGroups: [""]
+  resources: ["nodes"]
+  verbs: ["get", "create", "list", "delete"]
+```
+
+The next step is to link the user to that cluster role. To do this we have to create another object called ClusterRoleBinding. The ClusterRoleBinding object links a user object to a role.
+
+```properties
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: admin-binding
+subjects:
+- kind: User
+  name: admin # Name is case sensitive
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: ClusterRole
+  name: cluster-admin
+  apiGroup: rbac.authorization.k8s.io
+```
+
+
+
+```properties
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: developer-binding
+subjects:
+# You can specify more than one "subject"
+- kind: User
+  name: dev-user
+  apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role #this must be Role or ClusterRole
+  name: developer # this must match the name of the Role or ClusterRole you wish to bind to
+  apiGroup: rbac.authorization.k8s.io
 ```
