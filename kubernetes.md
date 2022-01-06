@@ -4826,20 +4826,71 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 ```
 
+#### Admission Controllers
 
+<p align="center">
+  <img src="images/44.png" alt="drawing" width="600"/>
+</p>
+
+We run commands from the command line using the kubectl utility to perform various operations on the Kubernetes cluster.
+
+With the rules we can create with RBAC, we can define which user should have access to which objects or we can define what kind of API operations they should be authorized.
+
+Let's say we want to create a pod without getting the image from a public Docker hub registry. Or maybe we don't want to use the latest image version. Or we do not permit run as a root user. Or we want the pod to always have the tag. Or you do not want to allow that request or allow certain capabilities only or to enforce that. or we just want to allow certain capabilities
 
 ```properties
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
+apiVersion: v1
+kind: Pod
 metadata:
-  name: developer-binding
-subjects:
-# You can specify more than one "subject"
-- kind: User
-  name: dev-user
-  apiGroup: rbac.authorization.k8s.io
-roleRef:
-  kind: Role #this must be Role or ClusterRole
-  name: developer # this must match the name of the Role or ClusterRole you wish to bind to
-  apiGroup: rbac.authorization.k8s.io
+  name: exp-pod
+spec:
+  containers:
+    - name: postgres
+--->  image: postgres:latest 
+      command: ["sleep", "3600"]
+      securityContext:
+--->    runAsUSer: 0 --
+        capabilities:
+--->      add: ["ADMIN"]
 ```
+
+So these are some of the things that we can't achieve with the RBAC and that is where admission controllers come in. Admission controllers, help us implement better security measures to enforce how a cluster is used.
+
+Apart from simply validating configuration, admission controllers can do a lot more such as change the request itself or perform additional operations before the pod gets created.
+
+What does each admission controller do?
+
+**AlwaysPullImages :** Ensures that every time a pod is created, the images are always pulled. 
+
+**DefaultStorageClass :**  Observes the creation of PVCs and automatically adds the default storage class to them if one is not specified.
+
+**EventRateLimit :** Can help set a limit on the request would be the API server can handle at a time to prevent the API server from flooding with requests.
+
+**NamespaceExists :** Rejects request to name spaces that do not exist.
+
+Lets assume, we want to create a pod in namespace called dev that does not exist.
+
+```bash
+% kubectl run nginx --image nginx -n dev 
+Error from server (NotFound): namespaces "dev" not found
+```
+
+Let's check the flow of the above request. 
+
+The request first gets authenticated and then authorized, and it then goes through the admission controllers. The NamespaceExists admission controller handles the request and checks if the dev namespace is available if it is not the request is rejected.
+
+There's another admission controller that is not enabled by default, and that is called the `NamespaceAutoProvision` admission controller. This admission controller automatically creates the namespace if it does not exist. 
+
+To enable a non-default admissions controller or disable default admissions controller, we need to add the following lines to the kube-apiserver.yaml file command section.
+
+```bash
+--enable-admissions-plugins=NamespaceAutoProvision
+```
+
+```bash
+--disable-admissions-plugins=DefaultStorageClass
+```
+
+Note that the NamespaceAutoProvision and the NamespaceExists admissions controllers are deprecated and is replaced by the `NamespaceLifecycle` admission controller.
+
+The `NamespaceLifecycle` admission controller will make sure that request to a non-existent namespace is rejected and that the default namespaces such as default, kupe-system and kube-public cannot be deleted.
