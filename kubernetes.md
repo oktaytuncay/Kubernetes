@@ -4862,7 +4862,7 @@ What does each admission controller do?
 
 **AlwaysPullImages :** Ensures that every time a pod is created, the images are always pulled. 
 
-**DefaultStorageClass :**  Observes the creation of PVCs and automatically adds the default storage class to them if one is not specified.
+**DefaultStorageClass :** It monitors the creation of PVCs and automatically adds them to the default storage class if no storage class is specified.
 
 **EventRateLimit :** Can help set a limit on the request would be the API server can handle at a time to prevent the API server from flooding with requests.
 
@@ -4894,3 +4894,131 @@ To enable a non-default admissions controller or disable default admissions cont
 Note that the NamespaceAutoProvision and the NamespaceExists admissions controllers are deprecated and is replaced by the `NamespaceLifecycle` admission controller.
 
 The `NamespaceLifecycle` admission controller will make sure that request to a non-existent namespace is rejected and that the default namespaces such as default, kupe-system and kube-public cannot be deleted.
+
+#### Validating and Mutating Admission Controller
+
+The NamespaceAutoProvision and the NamespaceExists admission controllers are helping to validate if in namespace already exists and reject the request if it doesn't exist. This is known as a `Validating Admission Controller`.
+
+Another admission controller DefaultStorageClass is enabled by default. This admission controller monitors the creation of PVCs and automatically adds them to the default storage class if no storage class is specified. This type of admission controller is known as a `Mutating Admission Controller.` It can change or mutate the object itself before it is created.
+
+So those are two types of admission controllers. Mutating admission controllers are those that can change the request. Validating admission controllers are those that can validate the request and, allow or deny this.
+
+These are all built-in admission controllers that are part of the Kubernetes source code and are compiled and shipped with Kubernetes.
+
+If we want our own admissions controller with our own logic to support external admissions controllers, then we can talk about two special admissions controllers available `Mutating Admission Webhook` and then `Validating Admission Webhook`.
+
+We can configure these Web hooks to point to a server that's hosted either within the Kubernetes cluster or outside it, and our server will have our own admission webhook service running with our own code and logic. 
+
+After a request goes through all the built-in admission controllers, it hits the web host that's configured. And then once it hits the webhook, it makes a call to the admission webhook server by passing an admission review object in a JSON format.
+
+This object has all the details about the request, such as the user that made the request and the type of operation the user is trying to perform and on what object and details about the object itself.
+
+On receiving the request, the admission webhook server responds with an admission review object with a result of whether the request is allowed or not. If the allowed field in the response is set to true, then the request is allowed and if it's set the false, it is rejected.
+
+The sample webhook configuration file should be as follows.
+
+```properties
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: "pod-policy.example.com"
+webhooks:
+- name: "pod-policy.example.com"
+  rules:
+  - apiGroups:   [""]
+    apiVersions: ["v1"]
+    operations:  ["CREATE"]
+    resources:   ["pods"]
+    scope:       "Namespaced"
+  clientConfig:
+    service:
+      namespace: "example-namespace"
+      name: "example-service"
+    caBundle: "Ci0tLS0tQk..."
+```
+
+### API Deprecations
+
+<p align="center">
+  <img src="images/45.png" alt="drawing" width="500"/>
+</p>
+
+A single API group can support multiple versions at a time. The rules in the API deprecation policy answer the following questions.
+
+- Why do we need to support multiple versions? 
+- How many should we support? 
+- When can we remove an older version that is no longer required?
+
+First, let's look at `Why`. 
+
+<p align="center">
+  <img src="images/46.png" alt="drawing" width="200"/>
+</p>
+
+For example, say that we are planning to contribute to the Kubernetes projects where we create an API group called `example.com`, under which we have two resources called sales and marketing. 
+
+We developed and tested it in-house, we named it `v1alpha1` as it is the first alpha release of v1 and we are ready to merge it into the Kubernetes project. We can create a sales or marketing object using a YAML file and specify apiVersion like below.
+
+```properties
+apiVersion: example.com/v1alpha1
+kind: sales
+metadata:
+  name: sales-kub
+spec:
+```
+
+For instance, the marketing project didn't go well and we decided to remove this. In the next release, we `can not` remove it direclly from the `v1alpha1` version.
+
+That's where the first rule of API deprecation policy comes into play. 
+
+<span style="color:red">*Rule 1: API elements may only be removed by incrementing the version of the API group.*</span>.
+
+Meaning we can only remove the marketing element from the `v1alpha1` version of the API group. But It will continue to be present in the `v1alpha1` version of the element.
+
+In an other saying, the resource in database is still at `v1alpha1`, but our API version has now changed to `v1alpha2`.
+
+<p align="center">
+  <img src="images/47.png" alt="drawing" width="400"/>
+</p>
+
+But, this is now going to be a problem. We will need to go back and change all API versions in our YAML files.
+
+The users can use the same YAML files to create the resources, but internally it would be converted and stored as we want `v1alpha2` as below.
+
+```properties
+apiVersion: example.com/v1alpha2
+kind: sales
+metadata:
+  name: sales-kub
+spec:
+```
+
+So that brings us to the second rule of API deprecation policy. 
+
+<span style="color:red">*Rule 2: API objects must be able to round-trip between API versions in a given release without information loss, with the exception of whole REST resources that do not exist in some versions.*</span>
+
+If we create an API and object in the `v1alpha1` version and it is converted to `v1alpha2`, and then back to `v1alpha1`, it should be the same as the original `v1alpha1` version.
+
+Let's say we fixed some bugs and are ready for beta version. 
+
+Our first beta version `/v1beta1` is ready. And then after a few months, we release the next beta version of `/v1beta2`. And finally, we are releasing the stable version, which is the G.A (General availability) version, which we call `/v1`.
+
+<p align="center">
+  <img src="images/48.png" alt="drawing" width="500"/>
+</p>
+
+So that's kind of how an API evolves over time.
+
+We don't have to have all the versions available at all times. We must deprecate and remove older versions as we release newer versions. Let's look at what are the rules and best practices around that.
+
+For instance, `v1alpha1` is the first preferred/storage version, and let's call it `X`. With the Kubernetes release of `X+1`, we released the `v1alpha2` version of the API group. Since we are in the alpha phase, we are not required to keep the older `v1alpha1` version as part of this new release. 
+
+And this is part of the rule for the Kubernetes deprecation policy.
+
+<span style="color:red">*Rule 4: Other than the most recent API versions in each track, older API versions must be supported after their announced deprecation for a duration of no less than:*</span>
+
+<span style="color:red">- *GA: 12 months or 3 releases (whichever is longer)*</span>
+<span style="color:red">- *Beta: 9 months or 3 releases (whichever is longer)*</span>
+<span style="color:red">- *Alpha: 0 releases*</span>
+
+Alpha versions need not be supported for any release. But Beta and G.A. versions once released must be supported anywhere from 9 to 12 months.
