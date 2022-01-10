@@ -5015,10 +5015,92 @@ For instance, `v1alpha1` is the first preferred/storage version, and let's call 
 
 And this is part of the rule for the Kubernetes deprecation policy.
 
-<span style="color:red">*Rule 4: Other than the most recent API versions in each track, older API versions must be supported after their announced deprecation for a duration of no less than:*</span>
+<span style="color:red">*Rule 4a: Other than the most recent API versions in each track, older API versions must be supported after their announced deprecation for a duration of no less than:*</span>
 
 <span style="color:red">- *GA: 12 months or 3 releases (whichever is longer)*</span>
 <span style="color:red">- *Beta: 9 months or 3 releases (whichever is longer)*</span>
 <span style="color:red">- *Alpha: 0 releases*</span>
 
 Alpha versions need not be supported for any release. But Beta and G.A. versions once released must be supported anywhere from 9 to 12 months.
+
+
+On `X+3`, we have `/v1beta2` release, from the beta version, it is necessary to have the previous beta version as well, in which case it should be `/v1beta1` as part of this version.
+
+<p align="center">
+  <img src="images/49.png" alt="drawing" width="300"/>
+</p>
+
+`/v1beta1` is now deprecated but not removed. It's still part of this release. It's still going to be there for a couple of releases before it is actually removed.
+
+If you want to use the `/v1beta1`, it will display a deprecation warning.
+Also note that at this time, `/v1beta1` is continuing to be the preferred version. So why is that?
+
+Rule 4b is to answer this question.
+
+<span style="color:red">*Rule 4b: The "preferred" API version and the storage version for a given group may not advance until after a release has been made that supports both the new version and the previous version.*</span>
+
+So in this case, the current release is the first release where both new and previous version, that's `/v1beta1` and `/v1beta2` are supported. So we cannot change the preferred storage version yet. 
+
+Instead, we have to wait until the next release.
+
+<p align="center">
+  <img src="images/50.png" alt="drawing" width="300"/>
+</p>
+
+The next release also has both versions, except `/v1beta2` becomes the preferred storage version.
+
+On `X+5`, we have `/v1` stable version. But along with that, we also have `/v1beta1` and `/v1beta2` versions. `/v1beta2` is is still the preferred or storage version because this is the first release that has the `/v1` version. But both `/v1beta2` and `/v1beta2` are deprecated.
+
+<p align="center">
+  <img src="images/51.png" alt="drawing" width="400"/>
+</p>
+
+In the next release, we can remove `/v1beta1` version because as per Rule 4a, beta version needs to be supported for three releases. Beta one version was deprecated in release `X+3` and it's been around for `X+4` and `X+5`. So that's three releases and it can now be removed.
+
+Suppose we are going to release the first version of `v2` with the next version and we have `/v2alpha1` version available for the first time.
+
+In the past, when we had a new version available, we immediately deprecated the old version.
+
+The `/v2alpha1` version is ready, should we deprecate the V1 version now? The answer is No, that's where `Rule3` comes in.
+
+<span style="color:red">*Rule 3: An API version in a given track may not be deprecated until a new API version at least as stable is released.*</span>
+
+Meaning G.A. versions can deprecated beta or alpha versions, but not the other way round and an alpha version can not deprecate a G.A. version.
+
+Only `v2` version can deprecate `v1` version.
+
+##### Kubectl Convert
+
+- Old Version
+
+  ```properties
+  apiVersion: apps/v1beta1
+  kind: Deployment
+  metadata:
+    name: nginx
+  spec
+  ```
+
+- New Version
+
+  ```properties
+  apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    name: nginx
+  spec
+  ```
+
+If we want to update the apiVersion of the application, we can use the `Kubectl convert` command as follows.
+
+```bash
+kubectl convert -f <old_file> --output-version <new-api>
+```
+
+```bash
+kubectl convert -f nginx.yaml --output-version apps/v1
+```
+
+The `kubectl convert` command may not be available on the system by default. Since it is a separate plugin, it must be installed separately as in the <a href="https://kubernetes.io/docs/tasks/tools/install-kubectl-macos/" target="_blank">Link</a>.
+
+
