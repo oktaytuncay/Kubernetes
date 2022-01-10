@@ -5104,3 +5104,8 @@ kubectl convert -f nginx.yaml --output-version apps/v1
 The `kubectl convert` command may not be available on the system by default. Since it is a separate plugin, it must be installed separately as in the <a href="https://kubernetes.io/docs/tasks/tools/install-kubectl-macos/" target="_blank">Link</a>.
 
 
+- Check all api-resources
+
+  ```bash
+  kubectl api-resources
+  ```
