@@ -5109,3 +5109,112 @@ The `kubectl convert` command may not be available on the system by default. Sin
   ```bash
   kubectl api-resources
   ```
+
+### Custom Resource Definitions (CRD)
+
+Let's say we want to create an application as kind `FlightTicket`. But this will get an error as by default there is no kind with this name.
+
+```properties
+apiVersion: flights.com/v1
+kind: FlightTicket
+metadata:
+  name: my-flight-ticket
+spec:
+  from: Istanbul
+  to: London
+  number: 2
+```
+
+We can't simply create any resource that we want without configuring it in Kubernetes is API. First, we have to define what that resource is that we want to create.
+
+For this, we need what is known as `Custom Resource Definition`(CRT). The CRT is a similar object with API version, type metadata and specification and creation is as follows.
+
+The groups section must be the same as the apiVersion of the my-flight-ticket application type.
+
+The kind section defined here under the names section and the kind section of the created application must be the same.
+
+The singular name is just the flightticket, which is used to display the resource type in the output of the `kubectl` command. The plural is what is used by the Kubernetes is API resource. If we run the `kubectl api-resources` command, this is what will be shown.
+
+We can also provide a short version of the name, let's say, ft. This way, we can just refer to the resource as ft when we run the kubectl commands.
+
+In the versions section, we can clarify if this is the version servered or storage version of the application.
+
+The schema defines all the parameters that can be specified under the spec section when we create the object. It defines what fields are supported and what type of value that fields supports.
+
+The schema uses `openAPIV3Schema` version, we can specify the different properties using an object type.
+
+```properties
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: flighttickets.flights.com
+spec:
+  scope: Namespaced
+  groups: flights.com
+  names:
+    kind: FlightTicket
+    singular: flightticket
+    plural: flighttickets
+    shortnames:
+      - ft
+  versions:
+    - name: v1
+      served: true
+      storage: true
+  schema:
+    openAPIV3Schema:
+      type: object
+      properties:
+        spec:
+          type: object
+          properties:
+            from:
+              type: string
+            to:
+              type: string
+            number:
+              type: integer
+```
+
+```bash
+kubectl create -f flightticket-custom-definition.yml
+```
+
+When we create the above-mentioned CRT then we can create the flightticket object as well.
+
+```bash
+kubectl create -f flightticket.yml
+```
+
+#### Custom Controllers
+
+We created a CRT and then created the Flightticket object. What we need to do is to follow the status of the objects in etcd and perform operations such as flight ticket reservation, edit or cancellation.
+
+We can make such a requirement with a Custom Controllers.
+
+So a controllers is any process or code that runs in a loop and is continuously monitoring the Kubernetes cluster and listening to events of specific objects being changed.
+
+A custom controller can be developed by Python, but the preferred language for doing this is GO.
+
+The sample controller can be found in the <a href="https://github.com/kubernetes/sample-controller" target="_blank">Link</a>.
+
+As a prerequisite, GO must be installed on the computer where the development will be made.
+
+```bash
+% go version 
+go version go1.17.6 darwin/amd64
+```
+
+```bash
+% git clone https://github.com/kubernetes/sample-controller
+
+% vi /Users/oktaytuncay/sample-controller/controller.go
+```
+
+`controller.go` file can be customized with our custom logic. When we build the code, we will run it as follows.
+
+```bash
+% ./sample-controller -kubeconfig=$HOME/.kube/config
+```
+
+### Blue/Green Deployment
