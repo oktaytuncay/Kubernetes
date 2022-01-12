@@ -5447,3 +5447,19 @@ Other useful helm commands can be found below.
   ```bash
   % helm install release-2 ./wordpress
   ```
+
+### Useful Kubernetes Commands and Tricks
+
+#### Aliases
+
+|Alias|Object|
+|-----|------|
+|po|POD|
+|rs|ReplicaSets|
+|deploy|Deployments|
+|svc|Services|
+|ns|Namespaces|
+|netpol|NetworkPolicies|
+|pv|PersistentVolumes|
+|pvc|PersistentVolumesClaims|
+|sa|ServiceAccounts|
