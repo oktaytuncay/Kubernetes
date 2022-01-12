@@ -5217,4 +5217,50 @@ go version go1.17.6 darwin/amd64
 % ./sample-controller -kubeconfig=$HOME/.kube/config
 ```
 
-### Blue/Green Deployment
+### Deployment Strategies
+
+Besides the recreate and rolling update strategy, there are two more deployment strategies. We can not specify these strategies as an option in the deployment, but they can be implemented in a different way.
+
+#### Blue/Green Deployment Strategy
+
+Blue/Green is a deployment strategy where we have the new version deployed alongside the old version.
+
+The old version is called blue and the new version is called green and all traffic is sent to the old version in blue until all tests pass. After all tests pass, all traffic is forwarded to the new version.
+
+<p align="center">
+  <img src="images/52.png" alt="drawing" width="500"/>
+</p>
+
+At first, we have the original version of our app deployed as a service and we will call it the blue deployment. Then we create a service to route the traffic.
+
+Then we'll put a label on the pods to associate the service with the pods in the deployment and call it version: v1. We use the same label as the selector in the service.
+
+We then deploy a second deployment and we'll call it the green deployment with a new version of the application. Once all tests pass, we change the label selector on the service and route the traffic to green deployment with the help of the service.
+
+After this point, we just need to set the version:v2 tag to the pods in the new deployment. All that needs to be done for this is to change the label specified under the service selector to v2. And then the service will switch traffic to pods in the green deployment.
+
+<p align="center">
+  <img src="images/53.png" alt="drawing" width="450"/>
+</p>
+
+#### Canary Deployment Strategy
+
+In this strategy, we deploy the new version again, but this time we only route a small percentage of traffic to it. The majority of traffic is being routed to the old version.
+
+When the tests are passed and if everything looks good, then we can route all traffic to the new version of the application.
+
+With Canary deployment, we want to achieve two things. 
+- First, we want traffic to go to both versions at the same time. 
+- But in doing so, we only want a small percentage of the traffic to go to the second version of the application.
+
+First, let's see how we can traffic the traffic from a single service to two deployments at the same time. 
+
+<p align="center">
+  <img src="images/54.png" alt="drawing" width="350"/>
+</p>
+
+For this, we need to create a common label, which is shown in purple in in the above figure and we need to update the selector label in the service to match this common label.
+
+That solves the first problem, we now have traffic going to both the versions of applications, but it's routing it equally.
+
+If there are a total of 5 pods in both deployments, if we only have one pod in the canary deployment, we can ensure that only 20% of the traffic is routed to the application in the v2 version.
