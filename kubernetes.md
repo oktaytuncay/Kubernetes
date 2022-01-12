@@ -5264,3 +5264,186 @@ For this, we need to create a common label, which is shown in purple in in the a
 That solves the first problem, we now have traffic going to both the versions of applications, but it's routing it equally.
 
 If there are a total of 5 pods in both deployments, if we only have one pod in the canary deployment, we can ensure that only 20% of the traffic is routed to the application in the v2 version.
+
+### Helm
+
+When we design a complex architecture, many components need to be defined as follows.
+
+Deployment for the pods, MySQL database servers, the Web Servers, a service to expose the Web Servers, the persistent volume to store the database, a persistent claim for the persistent volume, a secret to store the passwords, and maybe more.
+
+When we want to update them, we have to update the YAML files of each, and even when we want to delete some of them, we also have to make the necessary changes in the dependent services.
+
+And here is where Helm gets involved. Helm changes the paradigm. 
+
+Kubernetes doesn't really care about our app as a whole. All that it knows is that we declared various objects and it proceeds to make each of them exist in our cluster.
+
+But the Helm is built from the ground up to know these things. That's why it's sometimes called a package manager for Kubernetes. 
+
+Helm looks at these objects as part of a larger package. When we need to perform an action, we are not telling how objects should touch. We just say which package we want to act on.
+
+Depending on the package name, it knows which objects to change and how even if there are hundreds of objects belonging to that package.
+
+We can customize the settings we want for our application or package by specifying the desired values during installation. Instead of having and editing multiple files in multiple YAML files, there will be a single location where we can specify each custom setting at install time.
+
+```bash
+helm install <APP_NAME>
+```
+
+It is called the values.yaml file and, this is where we can change the size of our persistent volumes, passwords, and so on.
+
+We can upgrade our application with a single command. Helm will know what individual objects need to change to make this happen.
+
+```bash
+helm upgrade <APP_NAME>
+```
+
+We can also roll-back to the previous version.
+
+```bash
+helm rollback <APP_NAME>
+```
+
+Application can be uninstalled via single command. It keeps track of all the objects used by each app so it knows what to remove.
+
+```bash
+helm uninstall <APP_NAME>
+```
+
+We no longer have to micro-manage every object in the Kubernetes. Helm can do that for us.
+
+#### Helm Installation
+
+Helm installation instruction can be found from the <a href="https://helm.sh/docs/intro/install/" target="_blank">Link</a> for Linux, Windows, or Mac operating systems.
+
+#### Automation with Helm
+
+The question is, how does Helm do this automation?
+
+The first step is to convert the values found in all YAML files into templates where they can be variables, as in the example below. 
+
+With the change below, the version of the image became a variable.
+
+```properties
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp-deployment
+  labels: 
+    app: myapp
+    type: front-end
+spec:
+  template:
+    metadata:
+      name: myapp-pod
+      labels:
+        app: myapp
+        type: front-end    
+    spec:
+      containers:
+      - name: nginx-container
+        image: {{ .Values.image }}
+  replicas: 3
+  selector:
+    matchLabels:
+      type: front-end
+```
+
+And these values are stored in a file named values.yaml. This way,
+anyone who wants to deploy this application can customize their deployment by simply changing the values from the single file of values.yaml.
+
+```bash
+image: nginx
+storage: 50G
+passwordEncoded: PyVWtyLmsh...
+```
+
+A combination of templates and values.yaml, gives us a final version of definition files can be used to deploy the application on the Kubernetes cluster. The templates and the values.yaml file forms a Helm chart.
+
+A single Helm chart may be used to deploy a simple application and it will have all the necessary template files for different services as well as the values file with the variables.
+
+It also has a chart.yaml file that has information about the chart itself, such as the name of the chart, the charts version, a description of what chart is, some keywords associated with the application and information about the maintainers.
+
+An example chart file is as follows.
+
+```properties
+apiVersion: The chart API version (required)
+name: The name of the chart (required)
+version: A SemVer 2 version (required)
+keywords:
+  - A list of keywords about this project (optional)
+home: The URL of this projects home page (optional)
+sources:
+  - A list of URLs to source code for this project (optional)
+dependencies: # A list of the chart requirements (optional)
+  - name: The name of the chart (nginx)
+    version: The version of the chart ("1.2.3")
+maintainers: # (optional)
+  - name: The maintainers name (required for each maintainer)
+    email: The maintainers email (optional for each maintainer)
+    url: A URL for the maintainer (optional for each maintainer)
+```
+
+We can create our own chart for your own application, or we can explore existing charts from the <a href="https://artifacthub.io/" target="_blank">Artifact Hub</a> and look for charts uploaded by other users.
+
+This hub is called as a repository that stores helm charts and there are about 6000 charts there. We can search using this web interface or we can search using the command line as below.
+
+```bash
+% helm search hub wordpress
+URL                                               	CHART VERSION 	APP VERSION        	DESCRIPTION                                       
+https://artifacthub.io/packages/helm/kube-wordp...	0.1.0         	1.1                	this is my wordpress package                      
+https://artifacthub.io/packages/helm/riftbit/wo...	12.1.16       	5.8.1              	Web publishing platform for building blogs and ...
+```
+
+The artifact hub is the community-driven chart repository, but there are other repositories as well. In order to use other repositories, first of all, the repo must be added as follows.
+
+```bash
+% helm repo add bitnami https://charts.bitnami.com/bitnami
+```
+
+Even if we have multiple repos, we can only search a specific repo with the following command.
+
+```bash
+% helm search repo wordpress
+```
+
+We can list the existing repos using the below command.
+
+```bash
+% helm repo list
+NAME   	URL                               
+bitnami	https://charts.bitnami.com/bitnami
+```
+
+Once we find the chart, the next step is to install a chart on our cluster with the following command. 
+
+```bash
+% helm install [release-name] [chart-name]
+```
+
+When this command is run, the Helm Chart Package is downloaded from the repository, extracted and, installed locally. For each installation of a chart is called a release, and each release has a release name.
+
+Other useful helm commands can be found below.
+
+- To list installed packages
+
+  ```bash
+  % helm list
+  ```
+
+- Uninstall packages
+
+  ```bash
+  % helm uninstall my-release
+  ```
+
+- If we only want to download but not install packages
+
+  ```bash
+  % helm pull --untar bitnami/wordpress
+  ```
+
+- Install the local chart
+
+  ```bash
+  % helm install release-2 ./wordpress
+  ```
