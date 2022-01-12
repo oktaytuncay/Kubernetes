@@ -5228,7 +5228,7 @@ Blue/Green is a deployment strategy where we have the new version deployed along
 The old version is called blue and the new version is called green and all traffic is sent to the old version in blue until all tests pass. After all tests pass, all traffic is forwarded to the new version.
 
 <p align="center">
-  <img src="images/52.png" alt="drawing" width="500"/>
+  <img src="images/52.png" alt="drawing" width="600"/>
 </p>
 
 At first, we have the original version of our app deployed as a service and we will call it the blue deployment. Then we create a service to route the traffic.
@@ -5256,7 +5256,7 @@ With Canary deployment, we want to achieve two things.
 First, let's see how we can traffic the traffic from a single service to two deployments at the same time. 
 
 <p align="center">
-  <img src="images/54.png" alt="drawing" width="350"/>
+  <img src="images/54.png" alt="drawing" width="450"/>
 </p>
 
 For this, we need to create a common label, which is shown in purple in in the above figure and we need to update the selector label in the service to match this common label.
