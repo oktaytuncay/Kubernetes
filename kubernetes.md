@@ -5414,7 +5414,7 @@ NAME   	URL
 bitnami	https://charts.bitnami.com/bitnami
 ```
 
-Once we find the chart, the next step is to install a chart on our cluster with the following command. 
+Once we find the chart, the next step is to install a chart on our cluster with the following command.
 
 ```bash
 % helm install [release-name] [chart-name]
