@@ -303,6 +303,169 @@ myapp-pod   1/1     Running   0          4h18m   10.244.1.3   10.0.10.25   <none
 
 3. Use the `kubectl edit pod <pod-name>` command to edit pod properties.
 
+### Multi-Container Pods
+
+The question often arises, **Should I deploy my microservices stack to a single Pod with multiple containers, or should I create multiple Pods, each running a single microservice?** 
+
+The short answer is to operate a single microservice per Pod. This modus operandi promotes a decentralized, decoupled, and distributed architecture. Furthermore, it helps with rolling out new versions of a microservice without necessarily interrupting other parts of the system.
+
+So what’s the point of running multiple containers in a Pod then? 
+
+There are two common use cases. 
+Sometimes, you’ll want to initialize your Pod by executing setup scripts, commands, or any other kind of preconfiguration procedure before the application container should start. This logic runs in a so-called init container. 
+
+Other times, you’ll want to provide helper functionality that runs alongside the application container to avoid the need to bake the logic into application code. For example, you may want to massage the log output produced by the application. Containers running helper logic are called sidecars.
+
+#### Init Containers
+
+Init containers are always started before the main application containers, which means they have their own lifecycle.
+
+To split up the initialization logic, you can even distribute the work into multiple init containers that are run in the order of definition in the manifest. Of course, initialization logic can fail. If an init container produces an error, the whole Pod is restarted, causing all init containers to run again in sequential order.
+
+For init containers, Kubernetes provides a separate section: spec.initContainers. Init containers are always executed before the main application containers, regardless of the definition order in the manifest.
+
+**Example:**
+
+```properties
+apiVersion: v1
+kind: Pod
+metadata:
+  name: business-app
+spec:
+  initContainers:
+  - name: configurer
+    image: busybox
+    command: ['sh', '-c', 'echo Configuring application... && \
+              mkdir -p /usr/shared/app && echo -e "{\"dbConfig\": \
+              {\"host\":\"localhost\",\"port\":5432,\"dbName\":\"customers\"}}" \
+              > /usr/shared/app/config.json']
+    volumeMounts:
+    - name: configdir
+      mountPath: "/usr/shared/app"
+  containers:
+  - image: bmuschko/nodejs-read-config:1.0.0
+    name: web
+    ports:
+    - containerPort: 8080
+    volumeMounts:
+    - name: configdir
+      mountPath: "/usr/shared/app"
+  volumes:
+  - name: configdir
+    emptyDir: {}
+```
+
+Errors can occur during the execution of init containers. You can always retrieve the logs of an init container by using the --container command-line option (or -c in its short form)
+
+```bash
+kubectl logs business-app -c configurer
+```
+
+The lifecycle of an init container looks as follows: it starts up, runs its logic, then terminates once the work has been done. Init containers are not meant to keep running over a longer period of time.
+
+#### The Sidecar Pattern
+
+There are scenarios that call for a different usage pattern. For example, you may want to create a Pod that runs multiple containers continuously alongside one another.
+
+Typically, there are two different categories of containers: the container that runs the application and another container that provides helper functionality to the primary application. 
+
+In the Kubernetes, the container providing helper functionality is called a sidecar. 
+
+Among the most commonly used capabilities of a sidecar container are file synchronization, logging, and watcher capabilities. The sidecars are not part of the main traffic or API of the primary application. They usually operate asynchronously and are not involved in the public API.
+
+![pic55](images/55.png)
+
+**The YAML manifest"**
+
+```properties
+apiVersion: v1
+kind: Pod
+metadata:
+  name: webserver
+spec:
+  containers:
+  - name: nginx
+    image: nginx
+    volumeMounts:
+    - name: logs-vol
+      mountPath: /var/log/nginx
+  - name: sidecar
+    image: busybox
+    command: ["sh","-c","while true; do if [ \"$(cat /var/log/nginx/error.log \
+              | grep 'error')\" != \"\" ]; then echo 'Error discovered!'; fi; \
+              sleep 10; done"]
+    volumeMounts:
+    - name: logs-vol
+      mountPath: /var/log/nginx
+  volumes:
+  - name: logs-vol
+    emptyDir: {}
+```
+
+When starting up the Pod, we’ll notice that the overall number of containers will show 2. 
+
+#### The Adapter Pattern
+
+The adapter pattern transforms the output produced by the application to make it consumable in the format needed by another part of the system.
+
+![pic56](images/56.png)
+
+The business application running the main container produces the available disk space—and writes it to the file space.txt.
+
+As part of the architecture, we want to consume the file from a third-party monitoring application.
+
+The problem is that the external application requires the information to exclude the timestamp. We could change the logging format to avoid writing the timestamp, but we need to know when the log entry has been written.
+
+This is where the adapter pattern can help. A sidecar container executes transformation logic that turns the log entries into the format needed by the external system without having to change application logic.
+
+
+```properties
+apiVersion: v1
+kind: Pod
+metadata:
+  name: adapter
+spec:
+  containers:
+  - args:
+    - /bin/sh
+    - -c
+    - 'while true; do echo "$(date) | $(du -sh ~)" >> /var/logs/diskspace.txt; \
+       sleep 5; done;'
+    image: busybox
+    name: app
+    volumeMounts:
+      - name: config-volume
+        mountPath: /var/logs
+  - image: busybox
+    name: transformer
+    args:
+    - /bin/sh
+    - -c
+    - 'sleep 20; while true; do while read LINE; do echo "$LINE" | cut -f2 -d"|" \
+       >> $(date +%Y-%m-%d-%H-%M-%S)-transformed.txt; done < \
+       /var/logs/diskspace.txt; sleep 20; done;'
+    volumeMounts:
+    - name: config-volume
+      mountPath: /var/logs
+  volumes:
+  - name: config-volume
+    emptyDir: {}
+```
+
+#### The Ambassador Pattern
+
+The ambassador pattern provides a proxy for communicating with external services.
+
+Typical responsibilities include retry logic upon a request failure, security concerns like providing authentication or authorization, or monitoring latency or resource usage.
+
+Lets assume, We want to implement rate-limiting functionality for HTTP(S) calls to an external service. For example, the requirements for the rate limiter could say that an application can only make a maximum of 5 calls every 15 minutes.
+
+Instead of coupling the rate-limiting logic to the application code, it will be provided by an ambassador container.
+
+All calls from the business application must be routed through the ambassador container.
+
+![pic57](images/57.png)
+
 #### Kubernetes Replication Controllers
 
 ![pic5](images/5.png)
@@ -5463,3 +5626,103 @@ Other useful helm commands can be found below.
 |pv|PersistentVolumes|
 |pvc|PersistentVolumesClaims|
 |sa|ServiceAccounts|
+
+#### Useful Commands
+
+1. Set the context and namespace at the same time
+
+```bash
+% kubectl config set-context <context-of-question> --namespace=<namespace-of-question>
+```
+
+2. Using alias
+
+```bash
+% alias k=kubectl
+% k version
+```
+
+3. Check 
+
+```bash
+% kubectl api-resources
+NAME                              SHORTNAMES   APIVERSION                             NAMESPACED   KIND
+namespaces                        ns           v1                                     false        Namespace
+nodes                             no           v1
+```
+
+4. List all fields of Pod's spec.
+
+```bash
+% kubectl explain pods.spec
+```
+
+5. Create pod with the imperative approach
+
+```bash
+% kubectl run frontend --image=nginx --restart=Never --port=80
+```
+
+5. Create a manifest file without creating a pod using the imperative approach
+
+```bash
+% kubectl run frontend --image=nginx --restart=Never --port=80 --dry-run=client -o yaml > pod.yaml
+% vi pod.yaml
+% kubect create -f pod.yaml
+```
+
+6. Check the logs
+
+```bash
+% kubectl logs frontend
+```
+
+7. Open an interactive shell to the container.
+
+```bash
+kubectl exec -it nginx -n ckad -- /bin/sh
+```
+
+8. Start temporary Pod and run wget command.
+
+```bash
+kubectl run busybox --image=busybox --rm -it --restart=Never -n ckad -- wget 10.244.1.2:80
+```
+
+9. Combine 7 and 8
+
+```bash
+kubectl run loop-pod --image=nginx -n ckad --port=80 --rm -it --restart=Never -- /bin/sh -c 'for i in 1 2 3 4 5; do echo "Test $i"; done'
+```
+
+10. Generate a YAML file 
+
+```bash
+kubectl run loop-pod --image=nginx -n ckad --port=80 -o yaml --dry-run=client --restart=Never -- /bin/sh -c 'for i in 1 2 3 4 5; do echo "Test $i"; done' > loop-pod.yaml
+```
+
+11. Check the container's Environment Variables
+
+```bash
+kubectl exec configured-pod -- env
+```
+
+12. Create the ConfigMap by using the YAML manifest defined in the file
+
+```properties
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: app-config
+  namespace: nextapp
+data: 
+  config.json: |-
+      {
+        "dbConfig": 
+          {
+           "host": "localhost",
+           "port": 5432,
+           "dbName": "customers"
+          }     
+      }
+```
