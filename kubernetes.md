@@ -2222,6 +2222,14 @@ These are different patterns in designing a multi-container pod. When it comes t
 
 ### Observability
 
+#### Understanding Health Probing
+
+Even with the best automated test coverage, it’s nearly impossible to find all bugs before deploying software to a production environment. That’s especially true for failure situations that only occur after operating the software for an extended period of time. It’s not uncommon to see memory leaks, deadlocks, infinite loops, and similar conditions crop up once the application has been put under load by end users.
+
+Proper monitoring can help with identifying those issues; however, you still need to take an action to mitigate the situation. First of all, you’ll likely want to restart the application to prevent further outages. Second, the development team needs to identify the underlying root cause and fix the application’s code.
+
+Kubernetes provides a concept called health probing to automate the detection and correction of such issues. You can configure a container to execute a periodic mini-process that checks for certain conditions.
+
 #### Readiness Probes
 
 A pod has a pod status and some conditions. The pod status tell us where the pod is in it's lifecycle. When a pod is first created, it is in a pending state. This is when the scheduler tries to figure out where to place the pod.
@@ -2232,9 +2240,9 @@ Once the pod is scheduled, it goes into a `ContainerCreating` status where the i
 
 Once all the container in a pod starts, it goes into a `Running` state where it continues to be until the program completes successfully or is terminated.
 
-Conditions define pods status. It is an array of true or false values that tell is the state of the pod. When a pod is scheduled on a node, the `PodScheduled` condition is set to true. When the pod is `Initialized`, it's value is ste to true.
+Conditions define pods status. It is an array of true or false values that tell is the state of the pod. When a pod is scheduled on a node, the `PodScheduled` condition is set to true. When the pod is `Initialized`, it's value is set to true.
 
-We know that a pod has multiple containers. When all the containers in the pod are ready, the `ContainersReady` condition is set to True and finally the pod itself is considered to be `Ready` 
+We know that a pod has multiple containers. When all the containers in the pod are ready, the `ContainersReady` condition is set to True and finally the pod itself is considered to be `Ready`
 
 - `PodScheduled` **<span style="color:green">True</span>** or <span style="color:red">False</span>
 - `Initialized` **<span style="color:green">True</span>** or <span style="color:red">False</span>
@@ -2372,6 +2380,42 @@ livenessProbe:
 ```
 
 Similar to readiness probe, we have httpGet option for APIs, tcpSocket for port and exec for commands and as well as additional options like `initialDelaySeconds` before the test is run, `periodSeconds` to define the frequency and `failureThreshold`
+
+#### Startup Probe
+
+The purpose of a startup probe is to figure out when an application is fully started. Defining the probe is especially useful for an application that takes a long time to start up. The kubelet puts the readiness and liveness probes on hold while the startup probe is running. A startup probe finishes its operation under one of the following conditions:
+
+1. If it could verify that the application has been started.
+2. If the application doesn’t respond within the timeout period.
+
+```properties
+apiVersion: v1
+kind: Pod
+metadata:
+  name: startup-pod
+spec:
+  containers:
+  - image: httpd:2.4.46
+    name: http-server
+    startupProbe:
+      tcpSocket:
+        port: 80
+      initialDelaySeconds: 3
+      periodSeconds: 15
+```
+
+As you can see in the following terminal output, the describe command can retrieve the configuration of a startup probe as well.
+
+```bash
+$ kubectl describe pod startup-pod
+...
+Containers:
+  http-server:
+     ...
+     Startup:        tcp-socket :80 delay=3s timeout=1s period=15s \
+                     #success=1 #failure=3
+     ...
+```
 
 #### Container Logging
 
@@ -3406,6 +3450,37 @@ back-end   ClusterIP   10.96.16.84   <none>        80/TCP    21s
 ```
 
 The service can be accessed by other pods using the Cluster-IP or the Service Name.
+
+#### Recap
+
+**ClusterIP:** Exposes the Service on a cluster-internal IP. Only reachable from within the cluster.
+
+**NodePort:** Exposes the Service on each node’s IP address at a static port. Accessible from outside of the cluster.
+
+A service with ClusterIP can be patched to NodePort online.
+
+```bash
+$ kubectl patch service nginx-service -p '{"spec":{"type":"NodePort"} }'
+```
+
+**Test:** 
+```bash
+% kubectl get services
+NAME            TYPE        CLUSTER-IP     EXTERNAL-IP   PORT
+nginx-service   NodePort    10.96.124.64   <none>        9000:30597/TCP   8m28s
+```
+
+```bash
+% kubectl get nodes
+NAME          STATUS   ROLES   AGE     VERSION
+10.0.10.167   Ready    node    3d15h   v1.22.5
+10.0.10.44    Ready    node    3d15h   v1.22.5
+10.0.10.73    Ready    node    3d15h   v1.22.5
+```
+
+```bash
+$ wget --spider --timeout=1 10.0.10.167:30597
+```
 
 ### Ingress Networking
 
@@ -5726,3 +5801,23 @@ data:
           }     
       }
 ```
+
+13. Lists the events across all Pods for a given namespace.
+
+```bash
+$ kubectl get events
+LAST SEEN   TYPE      REASON            OBJECT               MESSAGE
+3m14s       Warning   BackOff           pod/custom-cmd       Back-off restarting \
+                                                             failed container
+```
+
+14. Get the IP address and the node port of the node that runs the Pod web-app
+
+```bash
+$ kubectl get pod web-app -o json | jq '.status.hostIP' -r
+```
+
+```bash
+$ kubectl get service web-app-service -o json | jq '.spec.ports[0].nodePort' -r
+```
+
