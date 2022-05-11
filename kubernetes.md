@@ -4545,6 +4545,101 @@ We have a StatefulSet with `volumeClaimTemplates` and a `StorageClass` definitio
 
 If one of the pods in the cluster fails and is recreated or rescheduled onto a node, StatefulSet does not automatically delete the PVC or the associated volume to the pod. Rather, it allows the pod to reconnect to the same privacy to which it was added before. Thanks to this behavior, StatefulSet provides stable storage for pods.
 
+##### Example:
+
+1. Create a  PersistentVolumeClaim named 2-db-pvc.yaml
+
+```properties
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: db-pv
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /var/logs
+```
+
+```bash
+% kubectl get pv
+NAME    CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS      CLAIM   STORAGECLASS   REASON   AGE
+db-pv   1Gi        RWO            Retain           Available                                   9s
+```
+
+2. Create a  PersistentVolumeClaim named 1-db-pv.yaml
+
+```properties
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: db-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 512m
+```
+
+```bash
+% kubectl get pvc
+NAME     STATUS   VOLUME                                                                                         CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+db-pvc   Bound    ocid1.volume.oc1.eu-frankfurt-1.abtheljrimxdxjfhs5rgcsyzdf6jutmydybxznalykhr55yq7beegp3efmka   50Gi       RWO            oci            12s                             9s
+```
+
+The PersistentVolume has not been mounted by a Pod yet. Therefore, inspecting the details of the object shows <none>. Using the describe command is a good way to verify if the PersistentVolumeClaim was mounted properly:
+
+```bash
+% kubectl describe pvc db-pvc | grep Used
+Used By:       <none>
+```
+
+3. Create a Pod named 3-app-consuming.yaml
+
+**Note:** *claimName* should be the same as PersistentVolumeClaim name
+
+```properties
+apiVersion: v1
+kind: Pod
+metadata:
+  name: app-consuming-pvc
+spec:
+  volumes:
+    - name: app-storage
+      persistentVolumeClaim:
+        claimName: db-pvc
+  containers:
+  - image: alpine
+    name: app
+    command: ["/bin/sh"]
+    args: ["-c", "while true; do sleep 60; done;"]
+    volumeMounts:
+      - mountPath: "/mnt/data"
+        name: app-storage
+```
+
+The PersistentVolumeClaim now also shows the Pod that mounted it:
+
+```bash
+% kubectl describe pvc db-pvc | grep Used
+Used By:       app-consuming-pvc
+```
+You can now go ahead and open an interactive shell to the Pod. Navigating to the mount path at /mnt/data gives you access to the underlying PersistentVolume:
+
+```bash
+% kubectl exec app-consuming-pvc -it -- /bin/sh
+/ # cd /mnt/data
+/mnt/data # ls
+total 0
+/mnt/data # touch test.db
+/mnt/data # ls -ltr
+total 0
+-rw-r--r--    1 root     root             0 May 11 08:17 test.db
+```
+
 ### Authentication, Authorization and Admission Control
 
 `kube-apiserver` is at the center of all operations within Kubernetes. We interact with it via the `kubectl` utility or by accessing the API directly. And in this way, we can perform almost any operation on the cluster. So access to the API server itself is the first line of defense to control.
