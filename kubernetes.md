@@ -1,5 +1,7 @@
 # Kubernetes From Scratch to Advance 
 
+**<span style="color:red">Oracle Cloud Infrastructure</span>** platform was used for all hands-on exercises. Check out <a href="https://www.oracle.com/cloud/sign-in.html" target="_blank">`this`</a> to get a Kubernetes cluster up and running quickly.
+
 ## Contact info
 
 Reach out to me at one of the following places!
