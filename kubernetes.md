@@ -122,8 +122,6 @@ Reach out to me at one of the following places!
   + [Tutorial and Useful Links](#tutorial-and-useful-links)
 ---
 
-## Lab - Create a PostgreSQL Deployment
-
 # Core Concepts
 
 **Node:** A node is a machine, physical or virtual which Kubernetes installed. And node is a worker machine and that is where containers will be launched by Kubernetes. It was also known as minions in the past.
